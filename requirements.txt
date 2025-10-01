@@ -1,0 +1,14 @@
+# Core dependencies
+langchain>=0.3.25
+langchain-core>=0.1.0
+loguru>=0.7.3
+deepeval>=3.1.5
+requests>=2.32.4
+pydantic>=2.0.0
+
+# Mininet (system install required, not pip installable)
+# See: https://github.com/mininet/mininet
+# mininet
+
+# Testing
+pytest>=7.0.0
