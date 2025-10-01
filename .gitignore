@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+
+# Mininet logs and artifacts
+mininet.log
+*.pcap
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment and secrets
+.env
+.env.*
+*.env
+
+# Jupyter and notebook checkpoints
+.ipynb_checkpoints/
+
+# Test and coverage
+.coverage
+.cache/
+htmlcov/
+
+# OS and editor
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.tmp
+.idea/
+.vscode/
+
+# Build
+build/
+dist/
+*.egg
+*.whl
+
+# Lock and dependency files
+uv.lock
+poetry.lock
+Pipfile.lock
+
+# Misc
+*.log
+*.out
+*.pid

@@ -1,0 +1,35 @@
+[project]
+name = "gen-engine-deep-eval"
+version = "0.1.0"
+description = "A basic example of a LLM app using the generative engine with Deep Eval tests."
+readme = "README.md"
+authors = [{ name = "Rory Potter", email = "rory.potter@capgemini.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "deepeval>=3.1.5",
+    "langchain>=0.3.25",
+    "loguru>=0.7.3",
+    "requests>=2.32.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[dependency-groups]
+dev = ["ruff>=0.9.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 88
+lint.select = ["E", "F", "I"]
+lint.ignore = ["E501"]
+lint.fixable = ["ALL"]
+lint.unfixable = []
+
+[project.scripts]
+test = "gen_engine_deep_eval.scripts:test"
