@@ -28,6 +28,14 @@ from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
 from pathlib import Path
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available, skip loading .env file
+    pass
 from typing import Any, Dict, List, Literal, Tuple
 
 from langchain.agents import AgentType, Tool, initialize_agent
