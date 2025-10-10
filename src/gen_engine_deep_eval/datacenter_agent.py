@@ -546,10 +546,29 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if self.net is None:
             return
         if updates:
+            # Try linksBetween first, but fallback to finding link through interfaces
             links = self.net.linksBetween(src, dst)
+            link = None
+            
             if not links:
-                raise ValueError(f"No Mininet link between {src} and {dst}")
-            link = links[0]
+                # Fallback: find the link by examining node interfaces
+                src_node = self.net.get(src)
+                dst_node = self.net.get(dst)
+                
+                if src_node and dst_node:
+                    # Look through src_node interfaces to find connection to dst_node
+                    for intf in src_node.intfList():
+                        if intf.link and intf.link.intf1 and intf.link.intf2:
+                            other_node = intf.link.intf1.node if intf.link.intf1.node != src_node else intf.link.intf2.node
+                            if other_node == dst_node:
+                                link = intf.link
+                                break
+                
+                if not link:
+                    raise ValueError(f"No Mininet link between {src} and {dst}")
+            else:
+                link = links[0]
+            
             for intf in (link.intf1, link.intf2):
                 intf.config(**updates)
         if status is not None:
