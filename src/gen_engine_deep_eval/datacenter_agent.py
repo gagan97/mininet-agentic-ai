@@ -648,7 +648,11 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
         agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         verbose=True,
         handle_parsing_errors=True,
-        agent_kwargs={"system_message": SYSTEM_PROMPT},
+        agent_kwargs={
+            "system_message": SYSTEM_PROMPT,
+            "format_instructions": "Use the following format:\n\nQuestion: the input question you must answer\nThought: you should always think about what to do\nAction: the action to take, should be one of the available tools\nAction Input: the input to the action (must be valid JSON)\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can repeat N times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question"
+        },
+        return_intermediate_steps=True,
     )
 
 
@@ -703,13 +707,45 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
         env.start()
         env.simulate_failure(json.dumps({"src": "core1", "dst": "agg1a", "mode": "cable_cut"}))
         env.activate_backup_path(json.dumps({"path": ["core2", "agg2a"]}))
-        llm = load_mininet_llm()
+        
+        # Test LLM initialization first
+        try:
+            llm = load_mininet_llm()
+            logger.info("✓ LLM initialized successfully")
+        except Exception as e:
+            logger.error(f"✗ LLM initialization failed: {e}")
+            print(f"\nLLM Error: {e}")
+            return
+        
+        # Test agent creation
+        try:
+            agent = build_mininet_agent(llm, env)
+            logger.info("✓ Agent created successfully")
+        except Exception as e:
+            logger.error(f"✗ Agent creation failed: {e}")
+            print(f"\nAgent Error: {e}")
+            return
+            
+        # Test a simple tool call first
+        try:
+            test_result = env.snapshot()
+            logger.info("✓ Environment tools working")
+        except Exception as e:
+            logger.error(f"✗ Environment tools failed: {e}")
+            print(f"\nEnvironment Error: {e}")
+            return
+        
+        # Now try the scenario
         scenario = MininetAgentScenario(env=env, llm=llm)
         outcome = scenario.run()
         print("\nAgent Outcome\n------------")
         print(outcome.get("output"))
         export_path = env.save_state("topology_snapshot.json")
         print(f"\nState exported to {export_path}")
+    except Exception as e:
+        logger.error(f"Demo failed: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         env.stop()
 
