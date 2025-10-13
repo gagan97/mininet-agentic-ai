@@ -40,6 +40,8 @@ This repository demonstrates two complementary workflows built on Capgemini's Ge
 
    The observer agent also honours `GEN_ENGINE_API_BASE` / `GEN_ENGINE_API_KEY` for backwards compatibility.
 
+   run command source .env to load the variables into your shell.
+
 3. Activate the environment before running any commands:
 
    ```bash
@@ -107,3 +109,10 @@ Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLErro
 
 - Publish the missing `gen_engine_deep_eval.scripts:test` entry point so `uv run test` triggers the DeepEval flow automatically.
 - Extend unit coverage to the observer agent once deterministic telemetry fixtures are available.
+
+## to run the application
+to install the requirments
+
+pip3.12 install -r requirements.txt
+
+sudo -E python3.12 -m src.gen_engine_deep_eval.datacenter_agent

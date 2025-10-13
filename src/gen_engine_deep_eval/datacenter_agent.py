@@ -944,7 +944,10 @@ SYSTEM_PROMPT = (
     "modifying the network.\n"
     "When a failure is detected, activate backup paths or call compute_resilient_path to identify alternatives,\n"
     "then monitor until the primary link is healthy and restore it.\n"
-    "Respond with `Final Answer: <summary>` once mitigation and validation are complete."
+    "Respond with `Final Answer: <summary>` once mitigation and validation are complete.\n"
+    "\n"
+    "Available tools:\n{tools}\n"
+    "Select from these tool names exactly: {tool_names}."
 )
 
 
