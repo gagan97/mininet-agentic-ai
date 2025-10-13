@@ -440,6 +440,8 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
                 metrics = self._sample_link_metrics(src, dst)
             except Exception as exc:  # pragma: no cover - best effort sampling
                 logger.debug("Failed to sample metrics for %s-%s: %s", src, dst, exc)
+        
+        # Return compact payload without verbose samples
         payload = {
             "tool": "monitor_link",
             "link": [src, dst],
@@ -452,8 +454,6 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
             "throughput_gbps": profile.throughput_gbps,
             "observed_rtt_ms": profile.observed_rtt_ms,
         }
-        if metrics is not None:
-            payload["samples"] = metrics
         return json.dumps(payload)
 
     def probe_connectivity(self, params: str) -> str:
@@ -755,6 +755,7 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if throughput_gbps is not None and profile.bw_gbps:
             utilisation_percent = min(100.0, (throughput_gbps / profile.bw_gbps) * 100)
 
+        # Return compact version without verbose interface stats
         return {
             "link": [src, dst],
             "timestamp": timestamp,
@@ -762,7 +763,6 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
             "expected_capacity_gbps": profile.bw_gbps,
             "utilisation_percent": utilisation_percent,
             "estimated_rtt_ms": estimated_rtt_ms,
-            "interfaces": direction_stats,
         }
 
     def inspect_link_health(self, params: str) -> str:
@@ -775,15 +775,11 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if profile is None:
             raise ValueError(f"Unknown link {src}-{dst}")
 
-        metrics: Dict[str, Any] | None = None
-        if self.net is not None:
-            metrics = self._sample_link_metrics(src, dst)
-
+        # Return compact version without verbose metrics
         payload = {
             "tool": "inspect_link_health",
             "link": [src, dst],
             "profile": profile.to_dict(),
-            "metrics": metrics,
         }
         return json.dumps(payload)
 
@@ -969,11 +965,9 @@ SYSTEM_PROMPT = (
     "When a failure is detected:\n"
     "  1. Use compute_resilient_path to identify the best alternate route avoiding the failed link\n"
     "  2. Call activate_backup_path with the path returned by compute_resilient_path\n"
-    "  3. Monitor the backup path ONCE to confirm it is operational\n"
-    "  4. Check the primary link health ONCE\n"
-    "  5. If primary is still down, provide your Final Answer with remediation summary\n"
-    "  6. If primary is healthy, call restore_primary_path then provide Final Answer\n"
-    "Be concise: minimize repeated monitoring. Provide Final Answer after backup activation and one health check.\n"
+    "  3. Provide your Final Answer immediately after backup activation\n"
+    "Do NOT monitor links after activation unless explicitly required. Be extremely concise.\n"
+    "Your goal is to restore connectivity with minimum tool calls.\n"
     "\n"
     "Available tools:\n{tools}\n"
     "Select from these tool names exactly: {tool_names}."
@@ -1044,7 +1038,7 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
         verbose=True,
         handle_parsing_errors=True,
         return_intermediate_steps=True,
-        max_iterations=15,
+        max_iterations=10,
         max_execution_time=300,
     )
 
@@ -1058,7 +1052,7 @@ class MininetAgentConfig(BaseModel):
     api_base: str | None = Field(default_factory=lambda: os.getenv("REST_API_BASE"))
     api_key: str | None = Field(default_factory=lambda: os.getenv("API_KEY"))
     temperature: float = 0.0
-    max_tokens: int = 1024
+    max_tokens: int = 512
 
 
 def load_mininet_llm(config: MininetAgentConfig | None = None) -> GenerativeEngineLLM:

@@ -104,11 +104,21 @@ The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure,
 1. Discovers the failure by analyzing topology and link health
 2. Uses `compute_resilient_path` to identify the best alternate route
 3. Activates the backup path to restore connectivity
-4. Monitors both primary and backup paths
-5. Restores the primary design once the link recovers
-6. Reports a concise `Final Answer` summary of all actions taken
+4. Provides a concise `Final Answer` summary of actions taken
 
-**Note:** The agent is constrained to 15 iterations and 5 minutes to prevent runaway loops and context overflow. If you encounter 500 errors from the API, the context may have grown too large—consider reducing tool verbosity or simplifying the investigation prompt.
+**Performance constraints:**
+- Agent limited to **10 iterations** (down from 15) and **5 minutes** execution time
+- Model `max_tokens` reduced to **512** (from 2048) to leave more room for ReAct scratchpad
+- Tool outputs now **exclude verbose interface statistics** to minimize context growth
+- System prompt instructs agent to **skip post-activation monitoring** and provide Final Answer immediately
+
+**Troubleshooting 500 errors:**
+If you still encounter `Internal Server Error` from the Generative Engine API:
+1. The ReAct scratchpad has exceeded the model's context window (typically after 3-4 tool calls)
+2. Try reducing `max_iterations` to 8 in `datacenter_agent.py:1042`
+3. Consider further reducing `max_tokens` to 384 in `datacenter_agent.py:1061`
+4. Simplify the `investigation_prompt` in `MininetScenario` to request fewer diagnostic steps
+5. Monitor the agent logs – if you see repeated tool calls, the system prompt may need stricter early-termination guidance
 
 ## SSL errors when connecting to HuggingFace
 
