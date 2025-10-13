@@ -1,99 +1,109 @@
-# Testing Generative Engine LLMs using Deep Eval
+# Generative Engine Deep Eval & Agentic Mininet Lab
 
-This is a minimal example which uses Generative Engine as a LLM-as-judge with the [Deep Eval](https://deepeval.com/) library.
+This repository demonstrates two complementary workflows built on Capgemini's Generative Engine:
 
-## Setup
+- **DeepEval integration** – run Generative Engine as an LLM-as-judge through a LangChain-compatible wrapper.
+- **Agentic network remediation** – orchestrate a ReAct agent that inspects, diagnoses, and repairs a Mininet-based data-center topology using structured tools.
 
-- You will need [uv](https://docs.astral.sh/uv/) installed for python package management.
-  You can install the required packages using `uv sync`.
-- You need to setup some environment variables to use the [Generative Engine](https://generative.engine.capgemini.com/) for LLM requests. First, copy the example configuration file:
+## Prerequisites
 
-  ```sh
-  cp .env.local .env
-  ```
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) for dependency management
+- Generative Engine credentials with API access
+- (For the Mininet demo) A Linux host with [Mininet](https://github.com/mininet/mininet) installed and `sudo` access
 
-  Then replace the placeholder value for `API_KEY` with your own. If you don't already have one:
+## Quick start
 
-  1. Navigate to the Generative Engine
-  2. Click on the avatar in the top-right
-  3. Open the `API keys` dialog
-  4. Create and copy the `General API Key`
+1. Install dependencies:
 
-  **Note:** Only add the API key to `.env` (listed in `.gitignore`) and **never commit it** to the Git repository.
+   ```bash
+   uv sync
+   ```
 
-- To run the test example, run the command
-  `uv run test`. This runs the test script in the package which runs the command
+   If you prefer requirements files, replicate the same environment with:
 
-  `uv run --env-file .env deepeval test run tests/test_example.py`.
+   ```bash
+   uv pip install -r requirements.txt
+   ```
 
-## Custom Wrapper for DeepEval
+2. Copy the sample environment file and add your credentials:
 
-To interface with the generative engine create a [custom LLM wrapper](https://deepeval.com/guides/guides-using-custom-llms) around the generative engine v2 API. This LLM is used to evaluate the LLM-as-judge metrics. The code is contained in the `gen_engine_deep_eval_wrapper.py` file.
+   ```bash
+   cp .env.local .env
+   ```
 
-We include an example test file using a [Hallucination test](https://deepeval.com/docs/metrics-hallucination).
+   Populate the following keys:
 
-We test the LLM application using an [End-to-end](https://deepeval.com/docs/evaluation-end-to-end-llm-evals) evaluation. The LLM application in our case is a simple LLM call using the Generative Engine wrapper and Langchain.
+   - `REST_API_BASE` – e.g. `https://api.generative.engine.capgemini.com/`
+   - `API_KEY` – personal Generative Engine API key (never commit this file)
+   - `GEN_ENGINE_MODEL` – optional override for the default model selection
 
-## SSL error when connecting to HuggingFace
+   The observer agent also honours `GEN_ENGINE_API_BASE` / `GEN_ENGINE_API_KEY` for backwards compatibility.
 
-If you are running the commands from the office, you may receive long error traces in the API console that end with:
+3. Activate the environment before running any commands:
 
+   ```bash
+   source .venv/bin/activate
+   ```
+
+## Repository tour
+
+- `src/gen_engine_deep_eval/wrapper.py` – LangChain-ready `GenerativeEngineLLM` wrapper with stop token handling and session tracking.
+- `src/gen_engine_deep_eval/helpers.py` / `models.py` – provider selection and response dataclasses.
+- `src/gen_engine_deep_eval/llm.py` – convenience pipeline composing the wrapper with LangChain parsers for DeepEval harnesses.
+- `src/gen_engine_deep_eval/observer_agent.py` – synthetic telemetry monitor using ReAct + anomaly detection tools.
+- `src/gen_engine_deep_eval/datacenter_agent.py` – Mininet automation, telemetry sampling, NetworkX topology graphing, and the expanded toolbelt (`inspect_link_health`, `compute_resilient_path`, `monitor_link`, `simulate_failure`, etc.).
+- `tests/test_mininet_agent.py` – unit coverage for prompt wiring, credential validation, topology graph filters, and JSON tool contracts.
+
+## Running tests
+
+Execute the fast unit suite (includes graph/pathing checks for the new tools):
+
+```bash
+uv run pytest
 ```
-  File ".venv\Lib\site-packages\huggingface_hub\utils\_http.py", line 93, in send
-    return super().send(request, *args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File ".venv\Lib\site-packages\requests\adapters.py", line 698, in send
-    raise SSLError(e, request=request)
-requests.exceptions.SSLError: (MaxRetryError("HTTPSConnectionPool(host='huggingface.co', port=443): Max retries exceeded with url: /mixedbread-ai/mxbai-embed-large-v1/resolve/main/adapter_config.json (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1010)')))"), '(Request ID: 43d1f269-e3e7-4e3f-b9ab-548d08e29406)')
+
+DeepEval jobs can be wired into CI once the `gen_engine_deep_eval.scripts:test` entry point is published. Until then, use the LangChain chain in `llm.py` directly or wrap it inside your own DeepEval scenario.
+
+## Observer agent demo
+
+The observer agent seeds a synthetic telemetry window and asks the LLM to decide when to call structured tools (`latest_snapshot`, `detect_anomalies`) before summarising findings.
+
+```bash
+uv run --env-file .env python -m gen_engine_deep_eval.observer_agent
 ```
 
-The API is attempting to download an embedded model from huggingface. The issue will typically only occur when on the XS4OFFICE network, due to ZScaler replacing certificates with its own.
+Highlights:
 
-The API uses the `certifi` Python package, which uses its own set of CAs rather than the system CAs. The solution is to add the Cap network root and intermediate certificates to those available in the `certifi` package. We don't need every CA from the Cap machine, just those relevant for accessing huggingface.
+- Z-score anomaly detection combined with domain thresholds (latency, CPU, packet loss).
+- Strict ReAct prompt enforcing alternating `Thought`/`Action` steps and a single `Final Answer`.
+- Stop-token aware wrapper prevents the model from streaming partial final answers.
 
-The solution on a Windows machine is:
+## Mininet data-center remediation demo
 
-1. In a browser, navigate to https://huggingface.co/
-1. View the certificate and its certification hierarchy.
-1. You should a hierarchy similar to: `CapgeminiPKIRootCA -> CapgeminiPKIIssuingCA2 -> global-internet.capgemini.com -> huggingface.co`
-1. Select CapgeminiPKIIssuingCA2 (or whatever the lowest level CA is) and export as "Base64-encoded ASCII, **certificate chain**" with a `.crt` extension.
-   - It needs both the CAs (selecting chain just saves needing to export both CAs manually), but it doesn’t need global-internet.capgemini.com.
-1. Add the content of this file (viewable in a text editor) to the bottom of the CA certificates file used by certifi, at `.venv\Lib\site-packages\certifi\cacert.pem` in the tutorial directory.
-1. Run the API command again. It should now be able to connect to huggingface.
+The data-center agent extends the environment with richer telemetry and path-planning capabilities:
 
-## Agentic network remediation with Mininet
+- Live link profiles track bandwidth, latency, utilisation, and loss via `_sample_link_metrics`.
+- A cached NetworkX graph (`_get_topology_graph`) drives shortest-path calculations and supports avoiding failed edges.
+- New LangChain tools expose these insights to the LLM:
+  - `inspect_link_health` – return current metrics and status for any link.
+  - `compute_resilient_path` – compute latency- or capacity-aware alternate paths between nodes.
+  - Existing tooling (`monitor_link`, `simulate_failure`, `activate_backup_path`, `restore_primary_path`, `probe_connectivity`, `traceroute`) remains available.
 
-The `gen_engine_deep_eval.datacenter_agent` module wires the Generative Engine
-LLM into a ReAct-style agent that can inspect and repair a Mininet
-data-center topology.
-
-### Prerequisites
-
-- A Linux environment with [Mininet](https://github.com/mininet/mininet) installed
-  and accessible to Python
-- Root privileges (Mininet requires elevated permissions)
-- Generative Engine credentials exported as `REST_API_BASE`, `API_KEY`, and
-  optionally `GEN_ENGINE_MODEL`
-
-### Demo workflow
+Run the end-to-end scenario (requires Linux + sudo):
 
 ```bash
 sudo env REST_API_BASE=$REST_API_BASE API_KEY=$API_KEY \
   uv run python -m gen_engine_deep_eval.datacenter_agent
 ```
 
-The demo boots a spine-leaf data-center topology (core, aggregation, and access
-switches plus multi-rack hosts), intentionally drops a spine-to-aggregation
-link, and lets the LLM reason through the provided tools:
+The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure, inspects telemetry, activates backups, then restores the primary path once healthy, reporting a concise `Final Answer` summary.
 
-- `get_topology_snapshot` to inspect blueprint metadata, switch models, and
-  current link profiles
-- `monitor_link` to observe utilisation, latency, and loss for any link
-- `probe_connectivity` and `traceroute` to validate end-to-end reachability
-- `simulate_failure` to inject fibre cuts, congestion, and latency spikes
-- `activate_backup_path` and `restore_primary_path` to manage path
-  reconfiguration
+## SSL errors when connecting to HuggingFace
 
-The agent should activate a backup path to maintain service while continuously
-monitoring the affected link, and once the primary recovers, restore the
-baseline configuration before reporting a `Final Answer` summary.
+Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLError` messages when HuggingFace models are downloaded. Because `certifi` ships its own CA bundle, export the Capgemini root and intermediate certificates and append them to `.venv/Lib/site-packages/certifi/cacert.pem` (on Windows) or the equivalent path on your platform. After updating the bundle, retry the command and the download should succeed.
+
+## Next steps
+
+- Publish the missing `gen_engine_deep_eval.scripts:test` entry point so `uv run test` triggers the DeepEval flow automatically.
+- Extend unit coverage to the observer agent once deterministic telemetry fixtures are available.

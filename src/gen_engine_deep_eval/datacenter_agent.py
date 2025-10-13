@@ -24,6 +24,8 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
+import time
 from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
@@ -38,11 +40,13 @@ except ImportError:
     pass
 from typing import Any, Dict, List, Literal, Tuple
 
-from langchain.agents import AgentType, Tool, initialize_agent
+from langchain.agents import AgentExecutor, Tool, create_react_agent
 from langchain_core.language_models import BaseLanguageModel
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from loguru import logger
 from pydantic.v1 import BaseModel, Field
 
+import networkx as nx
 from .wrapper import GenerativeEngineLLM
 
 NodeRole = Literal["core", "aggregation", "access", "host"]
@@ -130,6 +134,10 @@ class LinkProfile:
     loss_percent: float
     utilisation_percent: float = 0.0
     status: Literal["up", "down"] = "up"
+    throughput_gbps: float | None = None
+    observed_rtt_ms: float | None = None
+    last_sample_timestamp: float | None = None
+    last_sample_bytes: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -286,6 +294,8 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         self.net = None
         self.link_profiles: Dict[Tuple[str, str], LinkProfile] = {}
         self._baseline_profiles: Dict[Tuple[str, str], LinkProfile] = {}
+        self._link_metric_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self._topology_graph: nx.Graph | None = None
 
     def __enter__(self) -> "DataCenterEnvironment":
         self.start()
@@ -321,6 +331,8 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
             self.net = None
             self.link_profiles.clear()
             self._baseline_profiles.clear()
+            self._link_metric_cache.clear()
+            self._topology_graph = None
 
     def _build_topology_class(self):  # pragma: no cover
         blueprint = self.blueprint
@@ -410,6 +422,12 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if profile is None:
             raise ValueError(f"Unknown link {src}-{dst}")
         self.update_utilisation()
+        metrics: Dict[str, Any] | None = None
+        if self.net is not None:
+            try:
+                metrics = self._sample_link_metrics(src, dst)
+            except Exception as exc:  # pragma: no cover - best effort sampling
+                logger.debug("Failed to sample metrics for %s-%s: %s", src, dst, exc)
         payload = {
             "tool": "monitor_link",
             "link": [src, dst],
@@ -419,7 +437,11 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
             "loss_percent": profile.loss_percent,
             "utilisation_percent": round(profile.utilisation_percent, 2),
             "within_baseline": profile.utilisation_percent < 70,
+            "throughput_gbps": profile.throughput_gbps,
+            "observed_rtt_ms": profile.observed_rtt_ms,
         }
+        if metrics is not None:
+            payload["samples"] = metrics
         return json.dumps(payload)
 
     def probe_connectivity(self, params: str) -> str:
@@ -520,13 +542,16 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         self._apply_link_profile(src, dst, **baseline.to_dict())
         self._set_link_state(src, dst, baseline.status)
         self.link_profiles[key] = LinkProfile(**baseline.to_dict())
+        self._topology_graph = None
         return json.dumps({"tool": "restore_primary_path", "link": [src, dst], "profile": baseline.to_dict()})
 
     def _set_link_state(self, src: str, dst: str, state: Literal["up", "down"]) -> None:
         if self.net is None:
+            self._topology_graph = None
             return
         logger.info("Setting link %s-%s -> %s", src, dst, state)
         self.net.configLinkStatus(src, dst, state)
+        self._topology_graph = None
 
     def _apply_link_profile(
         self,
@@ -554,37 +579,355 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if self.net is None:
             return
         if updates:
-            # Try linksBetween first, but fallback to finding link through interfaces
-            links = self.net.linksBetween(src, dst)
-            link = None
-            
-            if not links:
-                # Fallback: find the link by examining node interfaces
-                src_node = self.net.get(src)
-                dst_node = self.net.get(dst)
-                
-                if src_node and dst_node:
-                    # Look through src_node interfaces to find connection to dst_node
-                    for intf in src_node.intfList():
-                        if intf.link and intf.link.intf1 and intf.link.intf2:
-                            other_node = intf.link.intf1.node if intf.link.intf1.node != src_node else intf.link.intf2.node
-                            if other_node == dst_node:
-                                link = intf.link
-                                break
-                
-                if not link:
-                    raise ValueError(f"No Mininet link between {src} and {dst}")
-            else:
-                link = links[0]
-            
+            link = self._get_mininet_link(src, dst)
             for intf in (link.intf1, link.intf2):
                 intf.config(**updates)
         if status is not None:
             self._set_link_state(src, dst, status)
+        self._topology_graph = None
 
     @staticmethod
     def _link_key(src: str, dst: str) -> Tuple[str, str]:
         return tuple(sorted((src, dst)))
+
+    def _get_mininet_link(self, src: str, dst: str):
+        if self.net is None:
+            raise RuntimeError("Network is not running")
+
+        links = self.net.linksBetween(src, dst)
+        if links:
+            return links[0]
+
+        # Fallback: traverse interfaces on source node to locate the link
+        src_node = self.net.get(src)
+        dst_node = self.net.get(dst)
+        if not src_node or not dst_node:
+            raise ValueError(f"Unknown nodes {src} or {dst}")
+
+        for intf in src_node.intfList():
+            link = getattr(intf, "link", None)
+            if not link or not getattr(link, "intf1", None) or not getattr(link, "intf2", None):
+                continue
+            other_node = link.intf1.node if link.intf1.node != src_node else link.intf2.node
+            if other_node == dst_node:
+                return link
+
+        raise ValueError(f"No Mininet link between {src} and {dst}")
+
+    def _get_link_interfaces(self, src: str, dst: str):  # pragma: no cover - requires Mininet runtime
+        link = self._get_mininet_link(src, dst)
+        return link.intf1, link.intf2
+
+    @staticmethod
+    def _read_sysfs_counter(intf_name: str, counter: str) -> int | None:
+        path = Path("/sys/class/net") / intf_name / "statistics" / counter
+        try:
+            return int(path.read_text().strip())
+        except (OSError, ValueError):  # pragma: no cover - filesystem access guarded
+            return None
+
+    def _collect_interface_stats(self, intf) -> Dict[str, Any]:  # pragma: no cover - requires Mininet runtime
+        stats: Dict[str, Any] = {}
+
+        try:
+            raw_stats = intf.stats()
+        except Exception:  # pragma: no cover - defensive
+            raw_stats = {}
+
+        for key in ("rx_bytes", "tx_bytes", "rx_packets", "tx_packets", "rx_errors", "tx_errors"):
+            value = raw_stats.get(key)
+            if value is None:
+                value = self._read_sysfs_counter(intf.name, key)
+            stats[key] = value
+
+        try:
+            qdisc_output = intf.tc("qdisc", "show", "dev", intf.name)
+        except Exception:  # pragma: no cover - defensive
+            qdisc_output = ""
+
+        drop_match = re.search(r"dropped (?P<drops>\d+)", qdisc_output)
+        stats["dropped_packets"] = int(drop_match.group("drops")) if drop_match else None
+
+        backlog_match = re.search(r"backlog (?P<backlog_bytes>\d+)b?(?:\s+(?P<backlog_packets>\d+)p)?", qdisc_output)
+        if backlog_match:
+            stats["backlog_bytes"] = int(backlog_match.group("backlog_bytes"))
+            backlog_packets = backlog_match.group("backlog_packets")
+            stats["backlog_packets"] = int(backlog_packets) if backlog_packets is not None else None
+        else:
+            stats["backlog_bytes"] = None
+            stats["backlog_packets"] = None
+
+        stats["timestamp"] = time.time()
+        stats["interface"] = intf.name
+        stats["node"] = getattr(getattr(intf, "node", None), "name", None)
+        return stats
+
+    def _sample_link_metrics(self, src: str, dst: str) -> Dict[str, Any]:  # pragma: no cover - requires Mininet runtime
+        if self.net is None:
+            raise RuntimeError("Network is not running")
+
+        key = self._link_key(src, dst)
+        profile = self.link_profiles.get(key)
+        if profile is None:
+            raise ValueError(f"Unknown link {src}-{dst}")
+
+        intf_a, intf_b = self._get_link_interfaces(src, dst)
+        stats_a = self._collect_interface_stats(intf_a)
+        stats_b = self._collect_interface_stats(intf_b)
+
+        timestamp = max(stats_a.get("timestamp", time.time()), stats_b.get("timestamp", time.time()))
+        cache = self._link_metric_cache.get(key)
+
+        throughput_gbps = None
+        node_a = stats_a.get("node") or stats_a.get("interface")
+        node_b = stats_b.get("node") or stats_b.get("interface")
+
+        if node_a == src:
+            src_stats, dst_stats = stats_a, stats_b
+        elif node_b == src:
+            src_stats, dst_stats = stats_b, stats_a
+        elif node_a == dst:
+            src_stats, dst_stats = stats_b, stats_a
+        elif node_b == dst:
+            src_stats, dst_stats = stats_a, stats_b
+        else:
+            src_stats, dst_stats = stats_a, stats_b
+
+        direction_stats = {
+            "src": src_stats,
+            "dst": dst_stats,
+        }
+
+        if cache:
+            delta_t = timestamp - cache.get("timestamp", timestamp)
+            if delta_t > 0:
+                tx_delta = 0
+                for label, current in (("a", stats_a), ("b", stats_b)):
+                    prev_tx = cache.get(f"{label}_tx_bytes")
+                    curr_tx = current.get("tx_bytes")
+                    if prev_tx is not None and curr_tx is not None and curr_tx >= prev_tx:
+                        tx_delta += curr_tx - prev_tx
+                throughput_gbps = (tx_delta * 8) / (delta_t * 1e9) if tx_delta else 0.0
+
+        # Update cache for next sample
+        estimated_rtt_ms = None
+        if profile.delay_ms is not None:
+            estimated_rtt_ms = profile.delay_ms * 2
+            backlog_bytes_total = 0
+            for sample in (src_stats, dst_stats):
+                backlog_bytes_total += sample.get("backlog_bytes") or 0
+            if backlog_bytes_total and profile.bw_gbps:
+                bytes_per_ms = (profile.bw_gbps * 1e9 / 8) / 1000
+                if bytes_per_ms:
+                    estimated_rtt_ms += backlog_bytes_total / bytes_per_ms
+
+        self._link_metric_cache[key] = {
+            "timestamp": timestamp,
+            "a_tx_bytes": stats_a.get("tx_bytes"),
+            "a_rx_bytes": stats_a.get("rx_bytes"),
+            "b_tx_bytes": stats_b.get("tx_bytes"),
+            "b_rx_bytes": stats_b.get("rx_bytes"),
+        }
+
+        profile.last_sample_timestamp = timestamp
+        profile.last_sample_bytes = {
+            "src_tx": src_stats.get("tx_bytes"),
+            "src_rx": src_stats.get("rx_bytes"),
+            "dst_tx": dst_stats.get("tx_bytes"),
+            "dst_rx": dst_stats.get("rx_bytes"),
+        }
+        profile.throughput_gbps = throughput_gbps
+        profile.observed_rtt_ms = estimated_rtt_ms
+
+        utilisation_percent = None
+        if throughput_gbps is not None and profile.bw_gbps:
+            utilisation_percent = min(100.0, (throughput_gbps / profile.bw_gbps) * 100)
+
+        return {
+            "link": [src, dst],
+            "timestamp": timestamp,
+            "throughput_gbps": throughput_gbps,
+            "expected_capacity_gbps": profile.bw_gbps,
+            "utilisation_percent": utilisation_percent,
+            "estimated_rtt_ms": estimated_rtt_ms,
+            "interfaces": direction_stats,
+        }
+
+    def inspect_link_health(self, params: str) -> str:
+        data = self._loads(params)
+        src, dst = data.get("src"), data.get("dst")
+        if not src or not dst:
+            raise ValueError("inspect_link_health requires 'src' and 'dst'")
+        key = self._link_key(src, dst)
+        profile = self.link_profiles.get(key)
+        if profile is None:
+            raise ValueError(f"Unknown link {src}-{dst}")
+
+        metrics: Dict[str, Any] | None = None
+        if self.net is not None:
+            metrics = self._sample_link_metrics(src, dst)
+
+        payload = {
+            "tool": "inspect_link_health",
+            "link": [src, dst],
+            "profile": profile.to_dict(),
+            "metrics": metrics,
+        }
+        return json.dumps(payload)
+
+    def _get_topology_graph(self, include_down: bool = False) -> nx.Graph:
+        if not include_down and self._topology_graph is not None:
+            return self._topology_graph
+
+        graph = nx.Graph()
+        for node in self.blueprint.nodes:
+            graph.add_node(
+                node.name,
+                role=node.role,
+                model=node.model,
+                metadata=node.metadata,
+            )
+
+        for link in self.blueprint.links:
+            key = link.key()
+            profile = self.link_profiles.get(key)
+            status = profile.status if profile else "unknown"
+            if status != "up" and not include_down:
+                continue
+
+            bw_gbps = profile.bw_gbps if profile else link.port_speed_gbps
+            throughput = profile.throughput_gbps if profile else None
+            available_bw = None
+            if bw_gbps is not None:
+                available_bw = max(bw_gbps - (throughput or 0.0), 0.0)
+
+            latency_weight = None
+            if profile and profile.observed_rtt_ms is not None:
+                latency_weight = profile.observed_rtt_ms
+            elif profile:
+                latency_weight = profile.delay_ms
+            else:
+                latency_weight = link.delay_ms
+
+            graph.add_edge(
+                link.src,
+                link.dst,
+                status=status,
+                delay_ms=profile.delay_ms if profile else link.delay_ms,
+                loss_percent=profile.loss_percent if profile else link.loss_percent,
+                bw_gbps=bw_gbps,
+                throughput_gbps=throughput,
+                available_bw_gbps=available_bw,
+                utilisation_percent=profile.utilisation_percent if profile else None,
+                weight_latency=latency_weight,
+            )
+
+        if include_down:
+            return graph
+
+        self._topology_graph = graph
+        return graph
+
+    def compute_shortest_path(
+        self,
+        src: str,
+        dst: str,
+        *,
+        avoid: List[Tuple[str, str]] | None = None,
+        objective: Literal["latency", "capacity"] = "latency",
+        include_down: bool = False,
+    ) -> Dict[str, Any]:
+        graph = self._get_topology_graph(include_down=True).copy()
+
+        if not include_down:
+            to_remove = [(u, v) for u, v, data in graph.edges(data=True) if data.get("status") != "up"]
+            graph.remove_edges_from(to_remove)
+
+        if avoid:
+            for edge in avoid:
+                if len(edge) != 2:
+                    continue
+                u, v = edge
+                if graph.has_edge(u, v):
+                    graph.remove_edge(u, v)
+
+        if objective == "latency":
+            weight = "weight_latency"
+        elif objective == "capacity":
+
+            def inverse_capacity(u, v, data):
+                bw = data.get("available_bw_gbps")
+                if bw is None or bw <= 0:
+                    bw = data.get("bw_gbps")
+                if bw is None or bw <= 0:
+                    return float("inf")
+                return 1 / bw
+
+            weight = inverse_capacity
+        else:  # pragma: no cover - guarded by typing
+            raise ValueError(f"Unsupported objective '{objective}'")
+
+        try:
+            path = nx.shortest_path(graph, src, dst, weight=weight)
+        except nx.NetworkXNoPath as exc:
+            raise ValueError(f"No path available between {src} and {dst}") from exc
+
+        edges = list(zip(path, path[1:]))
+        total_latency = 0.0
+        min_available_bw = float("inf")
+        for u, v in edges:
+            data = graph[u][v]
+            latency = data.get("weight_latency")
+            if latency is not None:
+                total_latency += latency
+            available = data.get("available_bw_gbps")
+            if available is None:
+                available = data.get("bw_gbps")
+            if available is not None:
+                min_available_bw = min(min_available_bw, available)
+
+        if min_available_bw == float("inf"):
+            min_available_bw = None
+
+        return {
+            "path": path,
+            "hops": edges,
+            "total_latency_ms": total_latency if total_latency else None,
+            "min_available_bw_gbps": min_available_bw,
+            "objective": objective,
+        }
+
+    def compute_resilient_path(self, params: str) -> str:
+        data = self._loads(params)
+        src, dst = data.get("src"), data.get("dst")
+        if not src or not dst:
+            raise ValueError("compute_resilient_path requires 'src' and 'dst'")
+        avoid = data.get("avoid")
+        if avoid is not None and not isinstance(avoid, list):
+            raise ValueError("'avoid' must be a list of [src, dst] pairs")
+        objective = data.get("objective", "latency")
+        include_down = bool(data.get("include_down", False))
+
+        avoid_pairs: List[Tuple[str, str]] | None = None
+        if avoid:
+            avoid_pairs = []
+            for edge in avoid:
+                if not isinstance(edge, (list, tuple)) or len(edge) != 2:
+                    raise ValueError("Each avoid entry must be [src, dst]")
+                avoid_pairs.append((edge[0], edge[1]))
+
+        result = self.compute_shortest_path(
+            src,
+            dst,
+            avoid=avoid_pairs,
+            objective=objective,
+            include_down=include_down,
+        )
+        result.update({
+            "tool": "compute_resilient_path",
+            "link": [src, dst],
+        })
+        return json.dumps(result)
 
     @staticmethod
     def _loads(payload: str) -> Dict[str, Any]:
@@ -597,8 +940,10 @@ SYSTEM_PROMPT = (
     "You are a senior network reliability LLM operating a Mininet data center lab.\n"
     "Follow the ReAct loop strictly: observe with tools before taking actions.\n"
     "All tool inputs must be JSON objects.\n"
-    "When a failure is detected, activate backup paths to preserve service, then monitor until\n"
-    "the primary link is healthy and restore it.\n"
+    "Use monitor_link and inspect_link_health to gather live utilisation, throughput, and latency before\n"
+    "modifying the network.\n"
+    "When a failure is detected, activate backup paths or call compute_resilient_path to identify alternatives,\n"
+    "then monitor until the primary link is healthy and restore it.\n"
     "Respond with `Final Answer: <summary>` once mitigation and validation are complete."
 )
 
@@ -614,6 +959,11 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
             name="monitor_link",
             description="Monitor utilisation and status of a link. Input JSON with src/dst.",
             func=env.monitor_link,
+        ),
+        Tool(
+            name="inspect_link_health",
+            description="Detailed health metrics for a link. JSON: {src,dst}.",
+            func=env.inspect_link_health,
         ),
         Tool(
             name="probe_connectivity",
@@ -640,14 +990,29 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
             description="Reapply baseline profile once healthy. JSON with src/dst.",
             func=env.restore_primary_path,
         ),
+        Tool(
+            name="compute_resilient_path",
+            description="Compute alternate path between two nodes. JSON: {src,dst,objective?,avoid?}.",
+            func=env.compute_resilient_path,
+        ),
     ]
 
-    return initialize_agent(
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_PROMPT),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ]
+    )
+
+    agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
+
+    return AgentExecutor(
+        agent=agent,
         tools=tools,
-        llm=llm,
-        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         verbose=True,
         handle_parsing_errors=True,
+        return_intermediate_steps=True,
     )
 
 
@@ -690,24 +1055,7 @@ class MininetAgentScenario:
     def run(self) -> Dict[str, Any]:
         agent = build_mininet_agent(self.llm, self.env)
         logger.info("Executing Mininet remediation scenario")
-        
-        # Create a simple chain without the full agent executor for now
-        # This is a workaround for the LangChain input validation issue
-        prompt = f"""
-You are a network engineer debugging a data center issue.
-
-Current situation: {self.investigation_prompt}
-
-Available tools and their current status:
-- Network topology is healthy and all links are operational
-- A failure was simulated on core1-agg1a link (it's down)
-- A backup path core2-agg2a is available and has been activated
-
-Based on the situation, provide a summary of what actions were taken and the current network status.
-"""
-        
-        response = self.llm.invoke(prompt)
-        return {"output": response.content if hasattr(response, 'content') else str(response)}
+        return agent.invoke({"input": self.investigation_prompt})
 
 
 def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
@@ -719,35 +1067,7 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
         env.start()
         env.simulate_failure(json.dumps({"src": "core1", "dst": "agg1a", "mode": "cable_cut"}))
         env.activate_backup_path(json.dumps({"path": ["core2", "agg2a"]}))
-        
-        # Test LLM initialization first
-        try:
-            llm = load_mininet_llm()
-            logger.info("✓ LLM initialized successfully")
-        except Exception as e:
-            logger.error(f"✗ LLM initialization failed: {e}")
-            print(f"\nLLM Error: {e}")
-            return
-        
-        # Test agent creation
-        try:
-            agent = build_mininet_agent(llm, env)
-            logger.info("✓ Agent created successfully")
-        except Exception as e:
-            logger.error(f"✗ Agent creation failed: {e}")
-            print(f"\nAgent Error: {e}")
-            return
-            
-        # Test a simple tool call first
-        try:
-            test_result = env.snapshot()
-            logger.info("✓ Environment tools working")
-        except Exception as e:
-            logger.error(f"✗ Environment tools failed: {e}")
-            print(f"\nEnvironment Error: {e}")
-            return
-        
-        # Now try the scenario
+        llm = load_mininet_llm()
         scenario = MininetAgentScenario(env=env, llm=llm)
         outcome = scenario.run()
         print("\nAgent Outcome\n------------")

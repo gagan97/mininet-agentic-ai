@@ -5,6 +5,7 @@ loguru>=0.7.3
 deepeval>=3.1.5
 requests>=2.32.4
 pydantic>=2.0.0
+networkx>=3.2
 
 # Mininet (system install required, not pip installable)
 # See: https://github.com/mininet/mininet
