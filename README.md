@@ -100,7 +100,13 @@ sudo env REST_API_BASE=$REST_API_BASE API_KEY=$API_KEY \
   uv run python -m gen_engine_deep_eval.datacenter_agent
 ```
 
-The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure, inspects telemetry, activates backups, then restores the primary path once healthy, reporting a concise `Final Answer` summary.
+The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure, and autonomously:
+1. Discovers the failure by analyzing topology and link health
+2. Uses `compute_resilient_path` to identify the best alternate route
+3. Activates the backup path to restore connectivity
+4. Monitors both primary and backup paths
+5. Restores the primary design once the link recovers
+6. Reports a concise `Final Answer` summary of all actions taken
 
 ## SSL errors when connecting to HuggingFace
 

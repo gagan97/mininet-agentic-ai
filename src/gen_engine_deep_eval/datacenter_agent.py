@@ -966,8 +966,12 @@ SYSTEM_PROMPT = (
     "Use monitor_link and inspect_link_health to gather live utilisation, throughput, and latency before\n"
     "modifying the network.\n"
     "When referencing links, use exact node pairs from the topology snapshot (e.g. core1-agg1a).\n"
-    "When a failure is detected, activate backup paths or call compute_resilient_path to identify alternatives,\n"
-    "then monitor until the primary link is healthy and restore it.\n"
+    "When a failure is detected:\n"
+    "  1. Use compute_resilient_path to identify the best alternate route avoiding the failed link\n"
+    "  2. Call activate_backup_path with the path returned by compute_resilient_path\n"
+    "  3. Monitor the backup path to confirm it is operational\n"
+    "  4. Periodically check the primary link health\n"
+    "  5. Once the primary link is healthy, call restore_primary_path\n"
     "Respond with `Final Answer: <summary>` once mitigation and validation are complete.\n"
     "\n"
     "Available tools:\n{tools}\n"
@@ -1074,8 +1078,11 @@ class MininetAgentScenario:
     env: DataCenterEnvironment
     llm: BaseLanguageModel
     investigation_prompt: str = (
-        "We detected loss between tenant web frontends and the database tier. Diagnose the failure, "
-        "activate a resilient path, then restore the primary design once healthy."
+        "Analyze the entire network topology for connectivity issues between any nodes, hosts, or switches. "
+        "Identify all failed or degraded links. For each failure, use compute_resilient_path to find an "
+        "alternate route, then activate the backup path to restore connectivity. Monitor the affected links "
+        "and once the primary path is healthy, restore the original design. Provide a final summary of all "
+        "issues found and remediation actions taken."
     )
 
     def run(self) -> Dict[str, Any]:
@@ -1091,8 +1098,9 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
         env = DataCenterEnvironment.load_state(blueprint_path)
     try:
         env.start()
+        # Inject a failure for the agent to discover and remediate
         env.simulate_failure(json.dumps({"src": "core1", "dst": "agg1a", "mode": "cable_cut"}))
-        env.activate_backup_path(json.dumps({"path": ["core2", "agg2a"]}))
+        
         llm = load_mininet_llm()
         scenario = MininetAgentScenario(env=env, llm=llm)
         outcome = scenario.run()
