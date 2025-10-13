@@ -1004,7 +1004,7 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
         [
             ("system", SYSTEM_PROMPT),
             ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
+            MessagesPlaceholder(variable_name="agent_scratchpad", optional=True),
         ]
     )
 
