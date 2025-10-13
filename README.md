@@ -90,6 +90,7 @@ The data-center agent extends the environment with richer telemetry and path-pla
 - New LangChain tools expose these insights to the LLM:
   - `inspect_link_health` – return current metrics and status for any link.
    - `compute_resilient_path` – compute latency- or capacity-aware alternate paths between nodes (supports `avoid` entries as `[src, dst]` pairs or strings like `"src-dst"`).
+   - `monitor_link` now returns structured errors with suggested neighbour links if you reference a non-existent edge.
   - Existing tooling (`monitor_link`, `simulate_failure`, `activate_backup_path`, `restore_primary_path`, `probe_connectivity`, `traceroute`) remains available.
 
 Run the end-to-end scenario (requires Linux + sudo):

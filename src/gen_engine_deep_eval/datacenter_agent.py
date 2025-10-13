@@ -420,7 +420,19 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         key = self._link_key(src, dst)
         profile = self.link_profiles.get(key)
         if profile is None:
-            raise ValueError(f"Unknown link {src}-{dst}")
+            suggestions = [
+                "-".join(candidate)
+                for candidate in self.link_profiles.keys()
+                if src in candidate or dst in candidate
+            ][:6]
+            payload = {
+                "tool": "monitor_link",
+                "link": [src, dst],
+                "error": f"unknown link {src}-{dst}",
+            }
+            if suggestions:
+                payload["suggestions"] = suggestions
+            return json.dumps(payload)
         self.update_utilisation()
         metrics: Dict[str, Any] | None = None
         if self.net is not None:
@@ -953,6 +965,7 @@ SYSTEM_PROMPT = (
     "All tool inputs must be JSON objects.\n"
     "Use monitor_link and inspect_link_health to gather live utilisation, throughput, and latency before\n"
     "modifying the network.\n"
+    "When referencing links, use exact node pairs from the topology snapshot (e.g. core1-agg1a).\n"
     "When a failure is detected, activate backup paths or call compute_resilient_path to identify alternatives,\n"
     "then monitor until the primary link is healthy and restore it.\n"
     "Respond with `Final Answer: <summary>` once mitigation and validation are complete.\n"

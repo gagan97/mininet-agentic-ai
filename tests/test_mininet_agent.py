@@ -174,6 +174,19 @@ def test_inspect_link_health_returns_profile(monkeypatch):
     assert "profile" in payload
 
 
+def test_monitor_link_unknown_returns_error(monkeypatch):
+    monkeypatch.setattr("gen_engine_deep_eval.datacenter_agent._ensure_mininet_imports", _fake_mininet_imports)
+    env = DataCenterEnvironment()
+    _seed_profiles(env)
+
+    response = env.monitor_link(json.dumps({"src": "acc11a", "dst": "acc21a"}))
+    payload = json.loads(response)
+    assert payload["tool"] == "monitor_link"
+    assert payload["link"] == ["acc11a", "acc21a"]
+    assert payload["error"].startswith("unknown link")
+    assert payload.get("suggestions")
+
+
 def test_compute_resilient_path_tool(monkeypatch):
     monkeypatch.setattr("gen_engine_deep_eval.datacenter_agent._ensure_mininet_imports", _fake_mininet_imports)
     env = DataCenterEnvironment()
