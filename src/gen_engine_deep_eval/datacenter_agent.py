@@ -1003,8 +1003,7 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", SYSTEM_PROMPT),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad", optional=True),
+            ("human", "{input}\n\n{agent_scratchpad}"),
         ]
     )
 
