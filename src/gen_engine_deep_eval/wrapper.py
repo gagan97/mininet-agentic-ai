@@ -74,11 +74,15 @@ class GenerativeEngineLLM(LLM):
         }
 
         logger.debug(f"Running model {self.model}")
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=data, timeout=60)
         if response.status_code != 200:
             # Try to log JSON error if possible
             try:
-                logger.error(response.json())
+                error_body = response.json()
+                logger.error(error_body)
+                # If this is a server error (5xx), it might be transient - provide context
+                if 500 <= response.status_code < 600:
+                    logger.warning("Received 5xx error - this may be due to context length or transient API issues")
             except Exception:
                 logger.error(response.text)
             response.raise_for_status()

@@ -969,10 +969,11 @@ SYSTEM_PROMPT = (
     "When a failure is detected:\n"
     "  1. Use compute_resilient_path to identify the best alternate route avoiding the failed link\n"
     "  2. Call activate_backup_path with the path returned by compute_resilient_path\n"
-    "  3. Monitor the backup path to confirm it is operational\n"
-    "  4. Periodically check the primary link health\n"
-    "  5. Once the primary link is healthy, call restore_primary_path\n"
-    "Respond with `Final Answer: <summary>` once mitigation and validation are complete.\n"
+    "  3. Monitor the backup path ONCE to confirm it is operational\n"
+    "  4. Check the primary link health ONCE\n"
+    "  5. If primary is still down, provide your Final Answer with remediation summary\n"
+    "  6. If primary is healthy, call restore_primary_path then provide Final Answer\n"
+    "Be concise: minimize repeated monitoring. Provide Final Answer after backup activation and one health check.\n"
     "\n"
     "Available tools:\n{tools}\n"
     "Select from these tool names exactly: {tool_names}."
@@ -1043,6 +1044,8 @@ def build_mininet_agent(llm: BaseLanguageModel, env: DataCenterEnvironment):
         verbose=True,
         handle_parsing_errors=True,
         return_intermediate_steps=True,
+        max_iterations=15,
+        max_execution_time=300,
     )
 
 
@@ -1055,7 +1058,7 @@ class MininetAgentConfig(BaseModel):
     api_base: str | None = Field(default_factory=lambda: os.getenv("REST_API_BASE"))
     api_key: str | None = Field(default_factory=lambda: os.getenv("API_KEY"))
     temperature: float = 0.0
-    max_tokens: int = 2048
+    max_tokens: int = 1024
 
 
 def load_mininet_llm(config: MininetAgentConfig | None = None) -> GenerativeEngineLLM:

@@ -108,6 +108,8 @@ The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure,
 5. Restores the primary design once the link recovers
 6. Reports a concise `Final Answer` summary of all actions taken
 
+**Note:** The agent is constrained to 15 iterations and 5 minutes to prevent runaway loops and context overflow. If you encounter 500 errors from the API, the context may have grown too large—consider reducing tool verbosity or simplifying the investigation prompt.
+
 ## SSL errors when connecting to HuggingFace
 
 Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLError` messages when HuggingFace models are downloaded. Because `certifi` ships its own CA bundle, export the Capgemini root and intermediate certificates and append them to `.venv/Lib/site-packages/certifi/cacert.pem` (on Windows) or the equivalent path on your platform. After updating the bundle, retry the command and the download should succeed.
