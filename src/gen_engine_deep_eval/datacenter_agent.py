@@ -912,9 +912,20 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if avoid:
             avoid_pairs = []
             for edge in avoid:
-                if not isinstance(edge, (list, tuple)) or len(edge) != 2:
-                    raise ValueError("Each avoid entry must be [src, dst]")
-                avoid_pairs.append((edge[0], edge[1]))
+                parsed: Tuple[str, str] | None = None
+                if isinstance(edge, (list, tuple)) and len(edge) == 2:
+                    parsed = (str(edge[0]), str(edge[1]))
+                elif isinstance(edge, str):
+                    separators = ["->", "-", ",", ":", "/"]
+                    for sep in separators:
+                        if sep in edge:
+                            parts = [part.strip() for part in edge.split(sep) if part.strip()]
+                            if len(parts) == 2:
+                                parsed = (parts[0], parts[1])
+                                break
+                if parsed is None:
+                    raise ValueError("Each avoid entry must be [src, dst] or 'src-dst'")
+                avoid_pairs.append(parsed)
 
         result = self.compute_shortest_path(
             src,

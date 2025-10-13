@@ -184,3 +184,30 @@ def test_compute_resilient_path_tool(monkeypatch):
     assert payload["tool"] == "compute_resilient_path"
     assert payload["path"][0] == "core1"
     assert payload["link"] == ["core1", "agg1b"]
+
+
+def test_compute_resilient_path_accepts_string_avoid(monkeypatch):
+    monkeypatch.setattr("gen_engine_deep_eval.datacenter_agent._ensure_mininet_imports", _fake_mininet_imports)
+    blueprint = TopologyBlueprint(
+        name="triangle",
+        nodes=[
+            NodeSpec("a", role="core", model="core", node_type="switch"),
+            NodeSpec("b", role="aggregation", model="agg", node_type="switch"),
+            NodeSpec("c", role="aggregation", model="agg", node_type="switch"),
+        ],
+        links=[
+            LinkSpec("a", "b", link_type="core-aggregation", port_speed_gbps=10, delay_ms=1, loss_percent=0.0),
+            LinkSpec("b", "c", link_type="aggregation-aggregation", port_speed_gbps=10, delay_ms=1, loss_percent=0.0),
+            LinkSpec("a", "c", link_type="core-aggregation", port_speed_gbps=10, delay_ms=1, loss_percent=0.0),
+        ],
+    )
+
+    env = DataCenterEnvironment(blueprint=blueprint)
+    _seed_profiles(env)
+
+    response = env.compute_resilient_path(
+        json.dumps({"src": "a", "dst": "c", "avoid": ["a-c"]})
+    )
+    payload = json.loads(response)
+    assert payload["tool"] == "compute_resilient_path"
+    assert payload["path"] == ["a", "b", "c"]
