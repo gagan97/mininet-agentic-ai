@@ -129,9 +129,27 @@ Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLErro
 - Publish the missing `gen_engine_deep_eval.scripts:test` entry point so `uv run test` triggers the DeepEval flow automatically.
 - Extend unit coverage to the observer agent once deterministic telemetry fixtures are available.
 
-## to run the application
-to install the requirments
+## Setup enviornment and run the application
+First download , install and configure python binding for mininet on the VM
 
-pip3.12 install -r requirements.txt
+   # Install dependencies
+   sudo apt update
+   sudo apt install git python3-dev python3-pip build-essential
 
-sudo -E python3.12 -m src.gen_engine_deep_eval.datacenter_agent
+   # Clone Mininet repository
+   Parallel to this code for mininet-agent folder
+   git clone https://github.com/mininet/mininet.git
+   cd mininet
+   
+   # Install Mininet with all options
+   sudo ./util/install.sh -a
+
+   
+
+   # install the requirments of the mininet agent 
+    go to folde where you downloaded the code 
+   pip3.12 install -r requirements.txt 
+   ( or on azure vm 'pip install -r requirements.txt' )
+
+   sudo -E python3.12 -m src.gen_engine_deep_eval.datacenter_agent
+   ( or on azure vm  'sudo -E python -m src.gen_engine_deep_eval.datacenter_agent')
