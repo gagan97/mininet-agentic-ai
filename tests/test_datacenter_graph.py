@@ -90,9 +90,16 @@ def test_run_datacenter_graph_healthy():
         "nodes": [],
         "links": []
     })
+    
+    # Create consistent mock profile objects
+    profile1 = Mock()
+    profile1.to_dict = Mock(return_value={"status": "up", "bw_gbps": 10})
+    profile2 = Mock()
+    profile2.to_dict = Mock(return_value={"status": "up", "bw_gbps": 10})
+    
     mock_env.link_profiles = {
-        ("node1", "node2"): Mock(to_dict=lambda: {"status": "up", "bw_gbps": 10}),
-        ("node2", "node3"): Mock(to_dict=lambda: {"status": "up", "bw_gbps": 10}),
+        ("node1", "node2"): profile1,
+        ("node2", "node3"): profile2,
     }
     
     graph = build_datacenter_graph(mock_llm, mock_env, max_iterations=2)
@@ -128,10 +135,19 @@ def test_run_datacenter_graph_with_failure():
         "nodes": [],
         "links": []
     })
+    
+    # Create consistent mock profile objects
+    failed_profile = Mock()
+    failed_profile.to_dict = Mock(return_value={"status": "down", "bw_gbps": 0})
+    healthy_profile1 = Mock()
+    healthy_profile1.to_dict = Mock(return_value={"status": "up", "bw_gbps": 10})
+    healthy_profile2 = Mock()
+    healthy_profile2.to_dict = Mock(return_value={"status": "up", "bw_gbps": 10})
+    
     mock_env.link_profiles = {
-        ("node1", "node2"): Mock(to_dict=lambda: {"status": "down", "bw_gbps": 0}),
-        ("node1", "node3"): Mock(to_dict=lambda: {"status": "up", "bw_gbps": 10}),
-        ("node3", "node2"): Mock(to_dict=lambda: {"status": "up", "bw_gbps": 10}),
+        ("node1", "node2"): failed_profile,
+        ("node1", "node3"): healthy_profile1,
+        ("node3", "node2"): healthy_profile2,
     }
     
     # Mock activate_backup_path method

@@ -21,15 +21,19 @@ def latest_snapshot_tool(state_provider: Any = None) -> str:
     
     Returns JSON with latency_ms, packet_loss_pct, cpu_pct, mem_pct.
     
+    Note: This tool is designed to be partially applied with a state_provider
+    before being used in a LangGraph. See observer_graph.py for usage example.
+    
     Args:
-        state_provider: Optional state provider for accessing telemetry data
+        state_provider: Required - DigitalTwinState instance for accessing telemetry
     
     Returns:
         JSON string with latest telemetry snapshot
     """
-    # This will be injected with actual implementation at runtime
-    # For now, return empty dict as placeholder
-    if state_provider and hasattr(state_provider, 'latest'):
+    if state_provider is None:
+        return json.dumps({"error": "state_provider is required"})
+    
+    if hasattr(state_provider, 'latest'):
         latest = state_provider.latest()
         return json.dumps(latest.__dict__ if latest else {})
     return json.dumps({})
@@ -44,15 +48,20 @@ def detect_anomalies_tool(
     Uses statistical z-scores and domain-specific rules to identify issues
     with latency, CPU, packet loss, and memory.
     
+    Note: This tool is designed to be partially applied with a state_provider
+    before being used in a LangGraph. See observer_graph.py for usage example.
+    
     Args:
-        state_provider: Optional state provider for accessing telemetry data
+        state_provider: Required - DigitalTwinState instance for accessing telemetry
         threshold: Z-score threshold for anomaly detection (default 3.0)
     
     Returns:
         JSON string with anomalies and latest sample
     """
-    # This will be injected with actual implementation at runtime
-    if state_provider and hasattr(state_provider, 'as_dict_series'):
+    if state_provider is None:
+        return json.dumps({"error": "state_provider is required"})
+    
+    if hasattr(state_provider, 'as_dict_series'):
         from ..observer_agent import _z_scores
         
         series = state_provider.as_dict_series()

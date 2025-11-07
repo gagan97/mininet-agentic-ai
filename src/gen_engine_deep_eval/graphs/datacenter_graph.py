@@ -153,7 +153,13 @@ def build_datacenter_graph(
         }
     
     def execute_action(state: DataCenterState) -> DataCenterState:
-        """Execute the planned remediation action."""
+        """Execute the planned remediation action.
+        
+        Note: The DataCenterEnvironment methods expect JSON strings as parameters
+        to maintain compatibility with the LangChain tool interface. This design
+        allows the same environment methods to be used by both LangChain ReAct
+        agents and LangGraph agents.
+        """
         logger.info("Executing remediation action...")
         
         actions = state.get("remediation_actions", [])
@@ -166,6 +172,7 @@ def build_datacenter_graph(
         
         result = {"status": "skipped"}
         
+        # All env methods expect JSON strings to maintain tool interface compatibility
         if action_name == "monitor_link":
             if hasattr(env, 'monitor_link'):
                 result_str = env.monitor_link(json.dumps(params))

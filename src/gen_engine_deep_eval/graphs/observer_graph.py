@@ -42,7 +42,9 @@ def build_observer_graph(
         """Entry node: Fetch latest telemetry snapshot."""
         logger.info("Analyzing telemetry snapshot...")
         
-        snapshot = latest_snapshot_impl()
+        # Use the state_provider passed to build_observer_graph
+        latest = state_provider.latest()
+        snapshot = latest.__dict__ if latest else {}
         
         # Add to state
         return {
@@ -57,7 +59,38 @@ def build_observer_graph(
         """Run anomaly detection on current snapshot."""
         logger.info("Detecting anomalies...")
         
-        anomaly_result = detect_anomalies_impl()
+        # Use the state_provider for anomaly detection
+        from ..observer_agent import _z_scores
+        
+        series = state_provider.as_dict_series()
+        anomalies: dict[str, Any] = {}
+        threshold = 3.0
+        
+        for metric, values in series.items():
+            if len(values) < 5:
+                continue
+            zs = _z_scores(values)
+            if abs(zs[-1]) >= threshold:
+                anomalies[metric] = {
+                    "current": values[-1],
+                    "z_score": round(zs[-1], 2),
+                    "threshold": threshold,
+                }
+            # Domain thresholds (custom rule layer)
+            if metric == "cpu_pct" and values[-1] > 80:
+                anomalies.setdefault(metric, {"current": values[-1]}).update(
+                    {"rule": ">80% cpu"}
+                )
+            if metric == "latency_ms" and values[-1] > 80:
+                anomalies.setdefault(metric, {"current": values[-1]}).update(
+                    {"rule": ">80ms latency"}
+                )
+        
+        latest = state_provider.latest()
+        anomaly_result = {
+            "anomalies": anomalies,
+            "latest": latest.__dict__ if latest else None
+        }
         
         return {
             **state,
