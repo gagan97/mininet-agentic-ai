@@ -1,0 +1,14 @@
+# Additional requirements for LangGraph-based agents
+# Install with: pip install -r requirements-langgraph.txt
+
+# LangGraph framework
+langgraph>=0.2.0
+langgraph-checkpoint>=1.0.0
+
+# Required by LangGraph
+langchain-core>=0.3.0
+typing-extensions>=4.5.0
+
+# Already in main requirements but listed for completeness
+langchain>=0.3.25
+pydantic>=2.0.0

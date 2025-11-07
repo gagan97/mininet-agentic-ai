@@ -7,6 +7,10 @@ requests>=2.32.4
 pydantic>=2.0.0
 networkx>=3.2
 
+# LangGraph dependencies (optional, for graph-based agents)
+# Install with: pip install -r requirements-langgraph.txt
+# Or: pip install langgraph langgraph-checkpoint
+
 # Mininet (system install required, not pip installable)
 # See: https://github.com/mininet/mininet
 # mininet
