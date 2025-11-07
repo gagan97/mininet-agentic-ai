@@ -8,6 +8,8 @@ requires-python = ">=3.12"
 dependencies = [
     "deepeval>=3.1.5",
     "langchain>=0.3.25",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint>=1.0.0",
     "loguru>=0.7.3",
     "requests>=2.32.4",
 ]

@@ -50,26 +50,124 @@ This repository demonstrates two complementary workflows built on Capgemini's Ge
 
 ## Repository tour
 
+### Core Infrastructure
 - `src/gen_engine_deep_eval/wrapper.py` – LangChain-ready `GenerativeEngineLLM` wrapper with stop token handling and session tracking.
 - `src/gen_engine_deep_eval/helpers.py` / `models.py` – provider selection and response dataclasses.
 - `src/gen_engine_deep_eval/llm.py` – convenience pipeline composing the wrapper with LangChain parsers for DeepEval harnesses.
+
+### Legacy ReAct Agents (Deprecated - use LangGraph versions)
 - `src/gen_engine_deep_eval/observer_agent.py` – synthetic telemetry monitor using ReAct + anomaly detection tools.
 - `src/gen_engine_deep_eval/datacenter_agent.py` – Mininet automation, telemetry sampling, NetworkX topology graphing, and the expanded toolbelt (`inspect_link_health`, `compute_resilient_path`, `monitor_link`, `simulate_failure`, etc.).
+
+### LangGraph-based Agents (Recommended)
+- `src/gen_engine_deep_eval/graphs/observer_graph.py` – Observer agent with state machine architecture, checkpointing, and structured state management.
+- `src/gen_engine_deep_eval/graphs/datacenter_graph.py` – DataCenter agent with graph-based remediation workflow, human-in-the-loop support, and state persistence.
+- `src/gen_engine_deep_eval/graphs/state_schemas.py` – TypedDict state models for type-safe agent state management.
+- `src/gen_engine_deep_eval/graphs/tools.py` – LangGraph-compatible tool definitions.
+- `src/gen_engine_deep_eval/examples/run_observer_graph.py` – Example demonstrating Observer agent with LangGraph.
+
+### Tests
 - `tests/test_mininet_agent.py` – unit coverage for prompt wiring, credential validation, topology graph filters, and JSON tool contracts.
+- `tests/test_observer_graph.py` – LangGraph Observer agent tests with mocked LLM and telemetry.
+- `tests/test_datacenter_graph.py` – LangGraph DataCenter agent tests with mocked environment.
 
 ## Running tests
 
-Execute the fast unit suite (includes graph/pathing checks for the new tools):
+Execute the fast unit suite (includes graph/pathing checks for the new tools and LangGraph implementations):
 
 ```bash
 uv run pytest
 ```
 
+Or with pip:
+
+```bash
+pytest tests/
+```
+
+Run specific test suites:
+
+```bash
+# Test LangGraph Observer agent
+pytest tests/test_observer_graph.py -v
+
+# Test LangGraph DataCenter agent
+pytest tests/test_datacenter_graph.py -v
+
+# Test legacy Mininet agent
+pytest tests/test_mininet_agent.py -v
+```
+
 DeepEval jobs can be wired into CI once the `gen_engine_deep_eval.scripts:test` entry point is published. Until then, use the LangChain chain in `llm.py` directly or wrap it inside your own DeepEval scenario.
 
-## Observer agent demo
+## LangGraph Agent Architecture (Recommended)
 
-The observer agent seeds a synthetic telemetry window and asks the LLM to decide when to call structured tools (`latest_snapshot`, `detect_anomalies`) before summarising findings.
+The repository now includes modern state machine-based agents using LangGraph, offering superior observability, state management, and control flow compared to the legacy ReAct pattern.
+
+### Observer Agent with LangGraph
+
+The LangGraph-based Observer agent provides:
+- **State Machine Architecture**: Explicit nodes for telemetry analysis, anomaly detection, and reasoning
+- **Checkpointing**: Built-in state persistence for resuming analysis
+- **Streaming Support**: Real-time visibility into agent reasoning
+- **Type-Safe State**: TypedDict schemas for reliable state management
+
+Run the LangGraph Observer demo:
+
+```bash
+python -m gen_engine_deep_eval.examples.run_observer_graph
+```
+
+**Graph Structure:**
+- `analyze_telemetry` → Fetch latest telemetry snapshot
+- `detect_issues` → Run z-score and rule-based anomaly detection
+- `reason` → LLM analyzes findings and recommends actions
+- `should_continue` → Conditional edge based on anomaly severity
+
+**Key Features:**
+- Iteration limit control (prevents infinite loops)
+- Analysis history tracking
+- Configurable anomaly thresholds
+- Checkpoint/resume capability via thread IDs
+
+### DataCenter Agent with LangGraph
+
+The LangGraph DataCenter agent adds:
+- **Human-in-the-Loop**: Interrupt points before critical remediation actions
+- **State Persistence**: Integration with Mininet state export/load
+- **Parallel Remediation**: Support for multiple concurrent failure scenarios
+- **Verification Loop**: Automatic recovery validation
+
+**Graph Structure:**
+- `assess_network` → Evaluate overall network health
+- `plan_remediation` → LLM generates remediation strategy
+- `execute_action` → Execute planned actions (backup paths, monitoring, etc.)
+- `verify_recovery` → Confirm successful remediation
+- `should_continue` → Loop until network healthy or max iterations
+
+**Available Actions:**
+- `monitor_link` - Check link health and metrics
+- `activate_backup_path` - Bring alternate paths online
+- `restore_primary_path` - Restore failed links after recovery
+- `probe_connectivity` - Test end-to-end connectivity
+- `traceroute` - Trace packet paths through topology
+- `simulate_failure` - Inject failures for testing (cable_cut, latency_spike, congestion, packet_loss)
+
+**Graph Visualization:**
+
+Both agents support Mermaid diagram export:
+
+```python
+from gen_engine_deep_eval.graphs.observer_graph import build_observer_graph
+
+graph = build_observer_graph(llm, state_provider)
+mermaid_diagram = graph.get_graph().draw_mermaid()
+print(mermaid_diagram)
+```
+
+## Legacy Observer Agent Demo (Deprecated)
+
+The legacy observer agent seeds a synthetic telemetry window and asks the LLM to decide when to call structured tools (`latest_snapshot`, `detect_anomalies`) before summarising findings.
 
 ```bash
 uv run --env-file .env python -m gen_engine_deep_eval.observer_agent
@@ -81,7 +179,9 @@ Highlights:
 - Strict ReAct prompt enforcing alternating `Thought`/`Action` steps and a single `Final Answer`.
 - Stop-token aware wrapper prevents the model from streaming partial final answers.
 
-## Mininet data-center remediation demo
+**Note:** This implementation is maintained for backward compatibility but new projects should use the LangGraph version.
+
+## Legacy Mininet Data-Center Remediation Demo (Deprecated)
 
 The data-center agent extends the environment with richer telemetry and path-planning capabilities:
 
