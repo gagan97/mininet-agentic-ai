@@ -71,12 +71,12 @@ def build_datacenter_graph(
         
         logger.info(f"Health: {healthy_links}/{total_links} links up")
         
+        # Note: messages is Annotated with 'add', so only return new messages
         return {
-            **state,
             "topology_blueprint": topology,
             "link_profiles": profiles,
             "network_health": health_assessment,
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "system", "content": f"Network health: {json.dumps(health_assessment)}"}
             ],
         }
@@ -144,12 +144,12 @@ def build_datacenter_graph(
             logger.error(f"Planning error: {e}")
             plan = {"action": "error", "error": str(e)}
         
+        # Note: messages and remediation_actions are Annotated with 'add'
         return {
-            **state,
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "assistant", "content": json.dumps(plan)}
             ],
-            "remediation_actions": state.get("remediation_actions", []) + [plan],
+            "remediation_actions": [plan],
         }
     
     def execute_action(state: DataCenterState) -> DataCenterState:
@@ -203,9 +203,9 @@ def build_datacenter_graph(
         
         logger.info(f"Action result: {result}")
         
+        # Note: messages is Annotated with 'add', so only return new messages
         return {
-            **state,
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "system", "content": f"Action result: {json.dumps(result)}"}
             ],
         }
@@ -234,13 +234,13 @@ def build_datacenter_graph(
         
         logger.info(f"Verification: {verification}")
         
+        # Note: messages is Annotated with 'add', so only return new messages
         return {
-            **state,
             "network_health": {
                 **state.get("network_health", {}),
                 **verification,
             },
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "system", "content": f"Verification: {json.dumps(verification)}"}
             ],
             "iteration_count": state.get("iteration_count", 0) + 1,

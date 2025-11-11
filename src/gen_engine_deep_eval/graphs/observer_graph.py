@@ -47,10 +47,10 @@ def build_observer_graph(
         snapshot = latest.__dict__ if latest else {}
         
         # Add to state
+        # Note: messages is Annotated with 'add', so only return new messages
         return {
-            **state,
             "current_snapshot": snapshot,
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "system", "content": f"Latest snapshot: {json.dumps(snapshot)}"}
             ],
         }
@@ -92,10 +92,10 @@ def build_observer_graph(
             "latest": latest.__dict__ if latest else None
         }
         
+        # Note: messages is Annotated with 'add', so only return new messages
         return {
-            **state,
             "detected_anomalies": anomaly_result,
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "system", "content": f"Anomaly detection: {json.dumps(anomaly_result)}"}
             ],
         }
@@ -166,12 +166,12 @@ def build_observer_graph(
             "assessment": response_text,
         }
         
+        # Note: messages and analysis_history are Annotated with 'add', so only return new items
         return {
-            **state,
-            "messages": state.get("messages", []) + [
+            "messages": [
                 {"role": "assistant", "content": response_text}
             ],
-            "analysis_history": state.get("analysis_history", []) + [analysis_entry],
+            "analysis_history": [analysis_entry],
             "iteration_count": state.get("iteration_count", 0) + 1,
             "final_answer": response_text,  # Store as potential final answer
         }
