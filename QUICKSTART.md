@@ -60,8 +60,10 @@ python -m gen_engine_deep_eval.examples.integrated_demo
 ### DataCenter Agent (LangGraph)
 - **Automated network remediation** workflow
 - **Human-in-the-loop** approval points
-- **State persistence** with Mininet integration
+- **State persistence** with Containernet integration
 - **Comprehensive health** assessment
+
+**Note**: Now uses **Containernet** (actively maintained Mininet fork with Docker support)
 
 ## File Structure
 
@@ -109,7 +111,7 @@ print(f"Anomalies: {result['detected_anomalies']}")
 print(f"Assessment: {result['final_answer']}")
 ```
 
-### DataCenter Agent (requires Mininet)
+### DataCenter Agent (requires Containernet)
 ```python
 from gen_engine_deep_eval.datacenter_agent import DataCenterEnvironment
 from gen_engine_deep_eval.graphs.datacenter_graph import build_datacenter_graph, run_datacenter_graph
@@ -123,6 +125,8 @@ with DataCenterEnvironment() as env:
     print(f"Actions: {result['remediation_actions']}")
     print(f"Health: {result['network_health']}")
 ```
+
+**Note**: Containernet is API-compatible with Mininet. See [CONTAINERNET_SETUP.md](CONTAINERNET_SETUP.md) for installation.
 
 ## Key Features
 
@@ -159,11 +163,12 @@ pip install -r requirements-langgraph.txt
 ```
 
 ### "No module named mininet"
-Mininet requires system installation:
 ```bash
-git clone https://github.com/mininet/mininet.git
-cd mininet
-sudo ./util/install.sh -a
+# Containernet uses 'mininet' namespace for API compatibility
+# See CONTAINERNET_SETUP.md for installation
+git clone https://github.com/containernet/containernet.git
+cd containernet
+sudo ansible-playbook -i "localhost," -c local install.yml
 ```
 
 ### Tests failing

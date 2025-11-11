@@ -1,12 +1,12 @@
 # Development Setup Guide
 
-This guide walks through setting up the development environment for the Mininet Agentic AI project with LangGraph support.
+This guide walks through setting up the development environment for the Mininet Agentic AI project with LangGraph support and Containernet.
 
 ## Prerequisites
 
 - Python 3.12+
-- Linux system (required for Mininet)
-- sudo access (required for Mininet)
+- Linux system (required for Containernet)
+- sudo access (required for Containernet)
 - Git
 
 ## Installation Steps
@@ -18,15 +18,24 @@ sudo apt update
 sudo apt install git python3-dev python3-pip build-essential
 ```
 
-### 2. Install Mininet (Optional - only for DataCenter agent)
+### 2. Install Containernet (Optional - only for DataCenter agent)
+
+**Containernet** is an actively maintained fork of Mininet with Docker support. It's fully API-compatible with Mininet.
+
+**For detailed installation instructions, see [CONTAINERNET_SETUP.md](CONTAINERNET_SETUP.md).**
+
+Quick install:
 
 ```bash
-# Clone Mininet repository (parallel to this project)
-git clone https://github.com/mininet/mininet.git
-cd mininet
+# Install Ansible
+sudo apt-get install ansible aptitude
 
-# Install Mininet with all options
-sudo ./util/install.sh -a
+# Clone Containernet repository
+git clone https://github.com/containernet/containernet.git
+cd containernet
+
+# Install using Ansible (recommended method)
+sudo ansible-playbook -i "localhost," -c local install.yml
 
 # Return to project directory
 cd ../mininet-agentic-ai
@@ -81,7 +90,7 @@ source .env
 
 ## Verify Installation
 
-### Test Python Imports
+### Test Containernet Imports
 
 ```bash
 python3.12 -c "
@@ -127,13 +136,13 @@ python -m gen_engine_deep_eval.observer_agent
 python -m gen_engine_deep_eval.examples.run_observer_graph
 ```
 
-### DataCenter Agent (Legacy ReAct - requires Mininet)
+### DataCenter Agent (Legacy ReAct - requires Containernet)
 
 ```bash
 sudo -E python -m gen_engine_deep_eval.datacenter_agent
 ```
 
-### DataCenter Agent (LangGraph - requires Mininet)
+### DataCenter Agent (LangGraph - requires Containernet)
 
 Coming soon - example script in development.
 
@@ -215,7 +224,14 @@ pip install langgraph langgraph-checkpoint
 ### Issue: "ModuleNotFoundError: No module named 'mininet'"
 
 **Solution:**
-Mininet requires system installation, not pip. Follow Mininet installation steps above.
+Containernet uses the `mininet` Python module namespace for API compatibility. Install Containernet:
+
+```bash
+# Follow detailed instructions in CONTAINERNET_SETUP.md
+git clone https://github.com/containernet/containernet.git
+cd containernet
+sudo ansible-playbook -i "localhost," -c local install.yml
+```
 
 ### Issue: "HTTPSConnectionPool timeout" during pip install
 
@@ -239,10 +255,10 @@ On corporate networks (e.g., XS4OFFICE), manually add CA certificates:
 cat corporate-ca.crt >> .venv/lib/python3.12/site-packages/certifi/cacert.pem
 ```
 
-### Issue: "Permission denied" when running Mininet agent
+### Issue: "Permission denied" when running Containernet agent
 
 **Solution:**
-Mininet requires sudo:
+Containernet requires sudo:
 ```bash
 sudo -E python -m gen_engine_deep_eval.datacenter_agent
 ```
@@ -288,7 +304,8 @@ mininet-agentic-ai/
 ## Resources
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [Mininet Documentation](http://mininet.org/)
+- [Containernet Documentation](https://containernet.github.io/)
+- [Containernet GitHub](https://github.com/containernet/containernet)
 - [Generative Engine Documentation](https://generative.engine.capgemini.com/studio/documentation)
 - [Python Type Hints](https://docs.python.org/3/library/typing.html)
 

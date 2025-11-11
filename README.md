@@ -1,16 +1,18 @@
-# Generative Engine Deep Eval & Agentic Mininet Lab
+# Generative Engine Deep Eval & Agentic Network Lab
 
 This repository demonstrates two complementary workflows built on Capgemini's Generative Engine:
 
 - **DeepEval integration** – run Generative Engine as an LLM-as-judge through a LangChain-compatible wrapper.
-- **Agentic network remediation** – orchestrate a ReAct agent that inspects, diagnoses, and repairs a Mininet-based data-center topology using structured tools.
+- **Agentic network remediation** – orchestrate a ReAct agent that inspects, diagnoses, and repairs a Containernet-based data-center topology using structured tools.
 
 ## Prerequisites
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 - Generative Engine credentials with API access
-- (For the Mininet demo) A Linux host with [Mininet](https://github.com/mininet/mininet) installed and `sudo` access
+- (For the DataCenter demo) A Linux host with [Containernet](https://github.com/containernet/containernet) installed and `sudo` access
+  - Containernet is an actively maintained fork of Mininet with Docker support
+  - See [CONTAINERNET_SETUP.md](CONTAINERNET_SETUP.md) for detailed installation instructions
 
 ## Quick start
 
@@ -193,12 +195,14 @@ The data-center agent extends the environment with richer telemetry and path-pla
    - `monitor_link` now returns structured errors with suggested neighbour links if you reference a non-existent edge.
   - Existing tooling (`monitor_link`, `simulate_failure`, `activate_backup_path`, `restore_primary_path`, `probe_connectivity`, `traceroute`) remains available.
 
-Run the end-to-end scenario (requires Linux + sudo):
+Run the end-to-end scenario (requires Linux + sudo + Containernet):
 
 ```bash
 sudo env REST_API_BASE=$REST_API_BASE API_KEY=$API_KEY \
   uv run python -m gen_engine_deep_eval.datacenter_agent
 ```
+
+**Note:** This agent now uses **Containernet** (an actively maintained fork of Mininet with Docker support). Containernet is API-compatible with Mininet, so no code changes were needed. See [CONTAINERNET_SETUP.md](CONTAINERNET_SETUP.md) for installation instructions.
 
 The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure, and autonomously:
 1. Discovers the failure by analyzing topology and link health
@@ -229,27 +233,40 @@ Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLErro
 - Publish the missing `gen_engine_deep_eval.scripts:test` entry point so `uv run test` triggers the DeepEval flow automatically.
 - Extend unit coverage to the observer agent once deterministic telemetry fixtures are available.
 
-## Setup enviornment and run the application
-First download , install and configure python binding for mininet on the VM
+## Setup environment and run the application
 
-   # Install dependencies
-   sudo apt update
-   sudo apt install git python3-dev python3-pip build-essential
+### Installing Containernet
 
-   # Clone Mininet repository
-   Parallel to this code for mininet-agent folder
-   git clone https://github.com/mininet/mininet.git
-   cd mininet
-   
-   # Install Mininet with all options
-   sudo ./util/install.sh -a
+This application now uses **Containernet** instead of Mininet. Containernet is an actively maintained fork with Docker support and full API compatibility.
 
-   
+**See [CONTAINERNET_SETUP.md](CONTAINERNET_SETUP.md) for complete installation instructions.**
 
-   # install the requirments of the mininet agent 
-    go to folde where you downloaded the code 
-   pip3.12 install -r requirements.txt 
-   ( or on azure vm 'pip install -r requirements.txt' )
+Quick install (Ubuntu/Debian):
 
-   sudo -E python3.12 -m src.gen_engine_deep_eval.datacenter_agent
-   ( or on azure vm  'sudo -E python -m src.gen_engine_deep_eval.datacenter_agent')
+```bash
+# Install dependencies
+sudo apt update
+sudo apt install git ansible aptitude
+
+# Clone Containernet repository
+git clone https://github.com/containernet/containernet.git
+cd containernet
+
+# Install using Ansible (recommended)
+sudo ansible-playbook -i "localhost," -c local install.yml
+```
+
+### Install project requirements
+
+```bash
+# Go to project folder
+cd /path/to/mininet-agentic-ai
+
+# Install Python dependencies
+pip3.12 install -r requirements.txt
+
+# Run the DataCenter agent with Containernet
+sudo -E python3.12 -m gen_engine_deep_eval.datacenter_agent
+```
+
+**Note**: The `-E` flag preserves environment variables when running with sudo.

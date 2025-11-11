@@ -11,9 +11,11 @@ networkx>=3.2
 # Install with: pip install -r requirements-langgraph.txt
 # Or: pip install langgraph langgraph-checkpoint
 
-# Mininet (system install required, not pip installable)
-# See: https://github.com/mininet/mininet
-# mininet
+# Containernet (system install required, not pip installable)
+# Containernet is an actively maintained fork of Mininet with Docker support
+# See: CONTAINERNET_SETUP.md for detailed installation instructions
+# Repository: https://github.com/containernet/containernet
+# Note: Containernet uses 'mininet' Python namespace for API compatibility
 
 # Testing
 pytest>=7.0.0

@@ -1,9 +1,9 @@
-"""Agentic Mininet integration for LLM-driven data-center remediation.
+"""Agentic Containernet integration for LLM-driven data-center remediation.
 
 This module provides a production-style topology blueprint, import/export
 support, and tool wrappers that allow an LLM-driven ReAct agent to reason
-about outages across a multi-tier (core/aggregation/access) Mininet lab.  The
-agent can:
+about outages across a multi-tier (core/aggregation/access) Containernet lab.
+The agent can:
 
 * inspect detailed topology metadata (roles, models, link media/speeds)
 * monitor synthetic utilisation metrics for each link and port
@@ -13,10 +13,11 @@ agent can:
   failure is cleared
 * persist and reload topology state for reproducible incident drills
 
-The implementation keeps Mininet imports lazy so that unit tests can exercise
-blueprint logic without requiring a Mininet install.  When running the agent for
-real you must install Mininet (typically on Ubuntu/Debian) and execute with root
-privileges.
+The implementation keeps Containernet imports lazy so that unit tests can exercise
+blueprint logic without requiring a Containernet install. When running the agent for
+real you must install Containernet (typically on Ubuntu/Debian) and execute with
+root privileges. Containernet is a fork of Mininet with Docker support and active
+maintenance.
 """
 
 from __future__ import annotations
@@ -259,14 +260,23 @@ def build_datacenter_blueprint() -> TopologyBlueprint:
 
 
 def _ensure_mininet_imports():
+    """Import Containernet modules (API-compatible with Mininet).
+    
+    Containernet is an actively maintained fork of Mininet with Docker support.
+    It maintains full API compatibility with Mininet, so existing code works
+    without modification.
+    """
     try:
+        # Try Containernet first (preferred, actively maintained)
         net_mod = import_module("mininet.net")
         topo_mod = import_module("mininet.topo")
         link_mod = import_module("mininet.link")
         node_mod = import_module("mininet.node")
     except ImportError as exc:  # pragma: no cover - runtime requirement
         raise RuntimeError(
-            "Mininet is required for this agent. Install it from https://github.com/mininet/mininet"
+            "Containernet is required for this agent. Install it from https://github.com/containernet/containernet\n"
+            "Containernet is an actively maintained fork of Mininet with Docker support.\n"
+            "Installation: See CONTAINERNET_SETUP.md for detailed instructions."
         ) from exc
 
     return (
@@ -308,9 +318,9 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if self.net is not None:
             return
         if os.geteuid() != 0:  # pragma: no cover
-            raise PermissionError("Mininet must run as root. Re-run with sudo.")
+            raise PermissionError("Containernet must run as root. Re-run with sudo.")
         topo_cls = self._build_topology_class()
-        logger.info("Starting Mininet with blueprint '%s'", self.blueprint.name)
+        logger.info("Starting Containernet with blueprint '%s'", self.blueprint.name)
         self.net = self._mininet_cls(
             topo=topo_cls(),
             controller=self._controller,
