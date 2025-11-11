@@ -304,16 +304,17 @@ def build_datacenter_graph(
         }
     )
     
-    # Add human-in-the-loop interrupt if enabled
-    if human_in_loop:
-        # LangGraph will pause before critical nodes for approval
-        workflow.add_interrupt("execute_action")
-    
     # Compile with checkpointer if provided
     if checkpointer is None:
         checkpointer = MemorySaver()
     
-    return workflow.compile(checkpointer=checkpointer)
+    # Add human-in-the-loop interrupt if enabled
+    # LangGraph will pause before critical nodes for approval
+    compile_kwargs = {"checkpointer": checkpointer}
+    if human_in_loop:
+        compile_kwargs["interrupt_before"] = ["execute_action"]
+    
+    return workflow.compile(**compile_kwargs)
 
 
 def run_datacenter_graph(
