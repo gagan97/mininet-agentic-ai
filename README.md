@@ -198,11 +198,30 @@ The data-center agent extends the environment with richer telemetry and path-pla
 Run the end-to-end scenario (requires Linux + sudo + Containernet):
 
 ```bash
+# LangGraph mode (default, recommended)
 sudo env REST_API_BASE=$REST_API_BASE API_KEY=$API_KEY \
   uv run python -m gen_engine_deep_eval.datacenter_agent
+
+# Legacy ReAct mode
+sudo env REST_API_BASE=$REST_API_BASE API_KEY=$API_KEY \
+  uv run python -m gen_engine_deep_eval.datacenter_agent --react
 ```
 
 **Note:** This agent now uses **Containernet** (an actively maintained fork of Mininet with Docker support). Containernet is API-compatible with Mininet, so no code changes were needed. See [CONTAINERNET_SETUP.md](CONTAINERNET_SETUP.md) for installation instructions.
+
+### LangGraph Mode (Default - Recommended)
+
+The datacenter agent now supports **LangGraph state machine architecture** for superior observability and control:
+
+- **State Machine Flow**: `assess_network → plan_remediation → execute_action → verify_recovery`
+- **Type-Safe State**: TypedDict schema with network health tracking
+- **Checkpointing**: Save/resume remediation sessions
+- **Human-in-the-Loop**: Optional approval for critical changes
+- **Better Debugging**: Clear node boundaries and state transitions
+
+See [DATACENTER_LANGGRAPH.md](DATACENTER_LANGGRAPH.md) for detailed migration guide and usage examples.
+
+### Legacy ReAct Mode
 
 The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure, and autonomously:
 1. Discovers the failure by analyzing topology and link health
@@ -219,10 +238,11 @@ The agent boots a spine–leaf fabric, simulates a spine-to-aggregation failure,
 **Troubleshooting 500 errors:**
 If you still encounter `Internal Server Error` from the Generative Engine API:
 1. The ReAct scratchpad has exceeded the model's context window (typically after 3-4 tool calls)
-2. Try reducing `max_iterations` to 8 in `datacenter_agent.py:1042`
-3. Consider further reducing `max_tokens` to 384 in `datacenter_agent.py:1061`
+2. Try reducing `max_iterations` to 8 in `datacenter_agent.py`
+3. Consider further reducing `max_tokens` to 384
 4. Simplify the `investigation_prompt` in `MininetScenario` to request fewer diagnostic steps
 5. Monitor the agent logs – if you see repeated tool calls, the system prompt may need stricter early-termination guidance
+6. **Recommended**: Switch to LangGraph mode which handles context better
 
 ## SSL errors when connecting to HuggingFace
 

@@ -49,6 +49,7 @@ from pydantic.v1 import BaseModel, Field
 
 import networkx as nx
 from .wrapper import GenerativeEngineLLM
+from .graphs.datacenter_graph import build_datacenter_graph, run_datacenter_graph
 
 NodeRole = Literal["core", "aggregation", "access", "host"]
 LinkType = Literal[
@@ -319,6 +320,11 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
             return
         if os.geteuid() != 0:  # pragma: no cover
             raise PermissionError("Containernet must run as root. Re-run with sudo.")
+        
+        # Clean up any leftover Mininet state from previous runs
+        import subprocess
+        subprocess.run(["mn", "-c"], check=False, capture_output=True)
+        
         topo_cls = self._build_topology_class()
         logger.info("Starting Containernet with blueprint '%s'", self.blueprint.name)
         self.net = self._mininet_cls(
@@ -364,6 +370,7 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
                         bw=link.port_speed_gbps,
                         delay=f"{link.delay_ms}ms",
                         loss=link.loss_percent,
+                        max_queue_size=1000,
                     )
 
         return BlueprintTopo
@@ -1084,6 +1091,7 @@ def load_mininet_llm(config: MininetAgentConfig | None = None) -> GenerativeEngi
 class MininetAgentScenario:
     env: DataCenterEnvironment
     llm: BaseLanguageModel
+    use_langgraph: bool = True
     investigation_prompt: str = (
         "Analyze the entire network topology for connectivity issues between any nodes, hosts, or switches. "
         "Identify all failed or degraded links. For each failure, use compute_resilient_path to find an "
@@ -1093,12 +1101,28 @@ class MininetAgentScenario:
     )
 
     def run(self) -> Dict[str, Any]:
-        agent = build_mininet_agent(self.llm, self.env)
-        logger.info("Executing Mininet remediation scenario")
-        return agent.invoke({"input": self.investigation_prompt})
+        if self.use_langgraph:
+            logger.info("Executing Mininet remediation with LangGraph")
+            graph = build_datacenter_graph(self.llm, self.env, max_iterations=10)
+            result = run_datacenter_graph(graph, self.investigation_prompt)
+            # Convert LangGraph result to match legacy format for compatibility
+            return {
+                "output": result.get("final_answer", "No summary available"),
+                "intermediate_steps": result.get("remediation_actions", []),
+            }
+        else:
+            logger.info("Executing Mininet remediation with legacy ReAct agent")
+            agent = build_mininet_agent(self.llm, self.env)
+            return agent.invoke({"input": self.investigation_prompt})
 
 
-def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
+def run_demo(blueprint_path: str | None = None, use_langgraph: bool = True) -> None:  # pragma: no cover
+    """Run datacenter agent demonstration.
+    
+    Args:
+        blueprint_path: Optional path to load topology from JSON
+        use_langgraph: If True, use LangGraph state machine (default), else use legacy ReAct agent
+    """
     env = DataCenterEnvironment()
     if blueprint_path:
         logger.info("Loading topology from %s", blueprint_path)
@@ -1109,10 +1133,18 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
         env.simulate_failure(json.dumps({"src": "core1", "dst": "agg1a", "mode": "cable_cut"}))
         
         llm = load_mininet_llm()
-        scenario = MininetAgentScenario(env=env, llm=llm)
+        scenario = MininetAgentScenario(env=env, llm=llm, use_langgraph=use_langgraph)
         outcome = scenario.run()
-        print("\nAgent Outcome\n------------")
-        print(outcome.get("output"))
+        
+        agent_type = "LangGraph" if use_langgraph else "ReAct"
+        if use_langgraph:
+            # For LangGraph, just print the summary (it's already detailed)
+            print(f"\n{outcome.get('output', 'No summary available')}\n")
+        else:
+            # For ReAct, show the old format
+            print(f"\n{agent_type} Agent Outcome\n------------")
+            print(outcome.get("output"))
+        
         export_path = env.save_state("topology_snapshot.json")
         print(f"\nState exported to {export_path}")
     except Exception as e:
@@ -1124,4 +1156,9 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
 
 
 if __name__ == "__main__":  # pragma: no cover
-    run_demo()
+    import sys
+    # Support command-line flag to use legacy ReAct agent
+    use_langgraph = "--react" not in sys.argv
+    mode = "LangGraph" if use_langgraph else "ReAct"
+    logger.info(f"Running datacenter agent in {mode} mode")
+    run_demo(use_langgraph=use_langgraph)
