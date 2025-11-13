@@ -1,6 +1,9 @@
 # Core dependencies
 langchain>=0.3.25
 langchain-core>=0.1.0
+langchain-community>=0.4.0
+langchain-classic>=1.0.0
+langchainhub>=0.1.21
 loguru>=0.7.3
 deepeval>=3.1.5
 requests>=2.32.4

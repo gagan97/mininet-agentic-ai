@@ -41,7 +41,7 @@ except ImportError:
     pass
 from typing import Any, Dict, List, Literal, Tuple
 
-from langchain.agents import AgentExecutor, Tool, create_react_agent
+from langchain_classic.agents import AgentExecutor, Tool, create_react_agent
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from loguru import logger
