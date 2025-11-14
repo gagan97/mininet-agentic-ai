@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Simulation Tool - AI Agent Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .status-indicator {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        /* Network Topology Styles */
+        .topology-view {
+            transition: all 0.3s ease;
+        }
+        
+        .network-node {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .network-node:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+        
+        .network-connection {
+            transition: stroke-width 0.2s ease;
+        }
+        
+        .network-connection:hover {
+            stroke-width: 4;
+        }
+        
+        .node-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        
+        .port-circle {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .port-circle:hover {
+            stroke-width: 3;
+        }
+        
+        .connection-line {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .connection-line:hover {
+            stroke-width: 4;
+        }
+        
+        .device-icon {
+            font-size: 16px;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">🌐 Network Simulation Tool</h1>
+            <p class="text-lg text-gray-600">AI Agent Interface for Network Outage Simulation</p>
+            <div class="mt-4 flex justify-center space-x-4">
+                <span id="health-status" class="px-4 py-2 rounded-full text-white font-medium">Loading...</span>
+                <button onclick="refreshData()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                    🔄 Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Switches</h3>
+                <p id="total-switches" class="text-2xl font-bold text-gray-900">-</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Active Ports</h3>
+                <p id="active-ports" class="text-2xl font-bold text-green-600">-</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Faulty Ports</h3>
+                <p id="faulty-ports" class="text-2xl font-bold text-red-600">-</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Issues</h3>
+                <p id="total-issues" class="text-2xl font-bold text-orange-600">-</p>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">🎮 Simulation Controls</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <button onclick="simulateIssue('cable-plugout')" class="px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition-colors">
+                    🔌 Cable Plug-out
+                </button>
+                <button onclick="simulateIssue('cable-cut')" class="px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition-colors">
+                    ✂️ Cable Cut
+                </button>
+                <button onclick="simulateIssue('traffic-drop')" class="px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition-colors">
+                    📉 Traffic Drop
+                </button>
+                <button onclick="simulateIssue('sfp-mismatch')" class="px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600 transition-colors">
+                    🔧 SFP Mismatch
+                </button>
+                <button onclick="resetNetwork()" class="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition-colors">
+                    🔄 Reset Network
+                </button>
+                <button onclick="showAPIDoc()" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition-colors">
+                    📚 API Docs
+                </button>
+            </div>
+        </div>
+
+        <!-- Topology Management -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📁 Topology Management</h2>
+            
+            <!-- Upload Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-3">📤 Upload Custom Topology</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <input type="file" id="topology-file" accept=".json,.xml,.yaml,.yml" 
+                                   class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                            <p class="text-xs text-gray-500 mt-1">Supported formats: JSON, XML, YAML</p>
+                        </div>
+                        <button onclick="uploadTopologyFile()" class="w-full px-4 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition-colors">
+                            📤 Upload & Apply
+                        </button>
+                        <button onclick="validateTopologyFile()" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors">
+                            🔍 Validate Only
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold text-gray-700">📋 Quick Actions</h3>
+                    <button onclick="exportTopology('json')" class="w-full px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg hover:bg-purple-600 transition-colors">
+                        💾 Export as JSON
+                    </button>
+                    <button onclick="exportTopology('xml')" class="w-full px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600 transition-colors">
+                        💾 Export as XML
+                    </button>
+                    <button onclick="exportTopology('yaml')" class="w-full px-4 py-2 bg-teal-500 text-white font-semibold rounded-lg hover:bg-teal-600 transition-colors">
+                        💾 Export as YAML
+                    </button>
+                    <button onclick="loadSampleTopology()" class="w-full px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors">
+                        🎯 Load Sample Topology
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Validation Results -->
+            <div id="validation-results" class="hidden">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">✅ Validation Results</h3>
+                <div id="validation-content" class="bg-gray-50 p-4 rounded-lg">
+                    <!-- Validation results will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Network Topology -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">🏗️ Network Topology</h2>
+                <div class="space-x-2">
+                    <button onclick="toggleTopologyView('diagram')" id="btn-diagram" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">
+                        📊 Diagram View
+                    </button>
+                    <button onclick="toggleTopologyView('table')" id="btn-table" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">
+                        📋 Table View
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Diagram View (Default) -->
+            <div id="topology-diagram" class="topology-view">
+                <div class="bg-gray-50 rounded-lg p-4 mb-4 overflow-x-auto">
+                    <svg id="network-svg" width="100%" height="600" class="border border-gray-200 rounded bg-white">
+                        <!-- Network diagram will be rendered here -->
+                    </svg>
+                </div>
+                
+                <!-- Topology Controls -->
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex space-x-4 text-sm text-gray-600">
+                        <span>🔍 Zoom: <button onclick="zoomTopology(1.2)" class="text-blue-600 hover:underline">In</button> | 
+                              <button onclick="zoomTopology(0.8)" class="text-blue-600 hover:underline">Out</button> | 
+                              <button onclick="resetTopologyZoom()" class="text-blue-600 hover:underline">Reset</button></span>
+                        <span>📐 Layout: <button onclick="changeLayout('hierarchical')" class="text-blue-600 hover:underline">Hierarchical</button> | 
+                                      <button onclick="changeLayout('circular')" class="text-blue-600 hover:underline">Circular</button></span>
+                    </div>
+                    <button onclick="exportTopologyDiagram()" class="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600">
+                        📷 Export Diagram
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Table View (Hidden by default) -->
+            <div id="topology-table" class="topology-view hidden">
+                <div id="network-topology" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Switches will be rendered here -->
+                </div>
+            </div>
+            
+            <!-- Legend -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                <h4 class="text-lg font-semibold text-gray-700 mb-4">Legend</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Connection Types -->
+                    <div class="space-y-2">
+                        <h5 class="font-medium text-gray-600">Connection Status</h5>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-1 bg-green-500"></div>
+                            <span class="text-sm">Active</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-1 bg-red-500"></div>
+                            <span class="text-sm">Failed</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-1 bg-yellow-500 border-dashed border-2"></div>
+                            <span class="text-sm">Warning</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Port Status -->
+                    <div class="space-y-2">
+                        <h5 class="font-medium text-gray-600">Port Status</h5>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-green-500"></div>
+                            <span class="text-sm">Connected</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-red-500"></div>
+                            <span class="text-sm">Cable Cut</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-yellow-500"></div>
+                            <span class="text-sm">Cable Unplugged</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-purple-500"></div>
+                            <span class="text-sm">Traffic Drop</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-orange-500"></div>
+                            <span class="text-sm">SFP Mismatch</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Connection Status -->
+                    <div class="space-y-2">
+                        <h5 class="font-medium text-gray-600">Connection Status</h5>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-1 bg-green-500"></div>
+                            <span class="text-sm">Active Connection</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-1 bg-red-500 border-dashed border border-red-500"></div>
+                            <span class="text-sm">Inactive Connection</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Device Types -->
+                    <div class="space-y-2">
+                        <h5 class="font-medium text-gray-600">Device Types</h5>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-6 h-4 rounded bg-red-200 border-2 border-red-400"></div>
+                            <span class="text-sm">Core Switch</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-6 h-4 rounded bg-blue-200 border-2 border-blue-400"></div>
+                            <span class="text-sm">Access Switch</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded bg-gray-300 border border-gray-500"></div>
+                            <span class="text-sm">Host/Server</span>
+                        </div>
+                    </div>
+                    
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Network Connections -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">🔗 Network Connections</h2>
+            <div id="connections-list" class="space-y-3">
+                <!-- Connections will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Connected Hosts -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">💻 Connected Hosts</h2>
+            <div id="hosts-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Hosts will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Current Issues -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">⚠️ Current Issues</h2>
+            <div id="issues-list" class="space-y-3">
+                <!-- Issues will be rendered here -->
+            </div>
+        </div>
+
+        <!-- API Information -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">🔗 API Endpoints for AI Agents</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="font-semibold text-gray-700 mb-2">Query Network State</h4>
+                    <code class="block text-blue-600">GET /api/network/status</code>
+                    <code class="block text-blue-600">GET /api/network/topology</code>
+                    <code class="block text-blue-600">GET /api/network/issues</code>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="font-semibold text-gray-700 mb-2">Simulate Issues</h4>
+                    <code class="block text-blue-600">POST /api/network/simulate/cable-plugout</code>
+                    <code class="block text-blue-600">POST /api/network/simulate/cable-cut</code>
+                    <code class="block text-blue-600">POST /api/network/simulate/traffic-drop</code>
+                </div>
+            </div>
+            <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                <p class="text-sm text-blue-800">
+                    <strong>For AI Agents:</strong> Use these RESTful endpoints to programmatically query network state and simulate various network issues. 
+                    Full API documentation is available at <code class="bg-white px-2 py-1 rounded">/api/docs</code>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Documentation Modal -->
+    <div id="api-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-8 max-w-4xl max-h-[80vh] overflow-y-auto m-4">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">📚 API Documentation</h2>
+                <button onclick="hideAPIDoc()" class="text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="api-docs-content">
+                Loading documentation...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        
+        // Status color mapping
+        const STATUS_COLORS = {
+            'CONNECTED': 'bg-green-500 border-green-700',
+            'PLUGGED_OUT': 'bg-yellow-500 border-yellow-700',
+            'CABLE_CUT': 'bg-red-500 border-red-700',
+            'TRAFFIC_DROP': 'bg-purple-500 border-purple-700'
+        };
+
+        const SFP_COLORS = {
+            'SR': 'bg-green-500 border-green-700',
+            'LR': 'bg-blue-500 border-blue-700',
+            'ZR': 'bg-yellow-500 border-yellow-700'
+        };
+
+        // Global variables for topology visualization
+        let currentLayout = 'hierarchical';
+        let topologyZoom = 1;
+        let topologyData = null;
+        let connectionsData = null;
+        let hostsData = null;
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshData();
+            // Auto-refresh every 10 seconds
+            setInterval(refreshData, 10000);
+        });
+
+        async function refreshData() {
+            try {
+                await Promise.all([
+                    loadNetworkStatus(),
+                    loadNetworkTopology(),
+                    loadNetworkConnections(),
+                    loadNetworkHosts(),
+                    loadNetworkIssues()
+                ]);
+                
+                // Refresh the topology diagram if it's currently visible
+                if (document.getElementById('topology-diagram').style.display !== 'none' && topologyData) {
+                    renderNetworkTopology(topologyData);
+                }
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+                showMessage('Error loading data', 'error');
+            }
+        }
+
+        async function loadNetworkStatus() {
+            const response = await fetch(`${API_BASE}/network/status`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const { overview, healthStatus } = data.data;
+                
+                document.getElementById('total-switches').textContent = overview.totalSwitches;
+                document.getElementById('active-ports').textContent = overview.activePorts;
+                document.getElementById('faulty-ports').textContent = overview.faultyPorts;
+                document.getElementById('total-issues').textContent = overview.totalIssues;
+                
+                const healthElement = document.getElementById('health-status');
+                healthElement.textContent = `Health: ${healthStatus}`;
+                healthElement.className = `px-4 py-2 rounded-full text-white font-medium ${
+                    healthStatus === 'HEALTHY' ? 'bg-green-500' :
+                    healthStatus === 'DEGRADED' ? 'bg-yellow-500' : 'bg-red-500'
+                }`;
+            }
+        }
+
+        async function loadNetworkTopology() {
+            const response = await fetch(`${API_BASE}/network/topology`);
+            const data = await response.json();
+            
+            if (data.success) {
+                topologyData = data.data.switches;
+                connectionsData = data.data.connections || [];
+                renderNetworkTopology(data.data.switches);
+                renderNetworkDiagram();
+            }
+        }
+
+        async function loadNetworkConnections() {
+            const response = await fetch(`${API_BASE}/network/connections`);
+            const data = await response.json();
+            
+            if (data.success) {
+                connectionsData = data.data;
+                renderConnections(data.data);
+                renderNetworkDiagram(); // Re-render diagram with connections
+            }
+        }
+
+        async function loadNetworkHosts() {
+            const response = await fetch(`${API_BASE}/network/hosts`);
+            const data = await response.json();
+            
+            if (data.success) {
+                hostsData = data.data;
+                renderHosts(data.data);
+                renderNetworkDiagram(); // Re-render diagram with hosts
+            }
+        }
+
+        async function loadNetworkIssues() {
+            const response = await fetch(`${API_BASE}/network/issues?resolved=false`);
+            const data = await response.json();
+            
+            if (data.success) {
+                renderIssues(data.data);
+            }
+        }
+
+        function renderNetworkTopology(switches) {
+            const container = document.getElementById('network-topology');
+            container.innerHTML = '';
+            
+            switches.forEach(switchData => {
+                const switchDiv = document.createElement('div');
+                const switchTypeColor = {
+                    'core': 'border-red-300 bg-red-50',
+                    'aggregation': 'border-blue-300 bg-blue-50',
+                    'access': 'border-green-300 bg-green-50',
+                    'edge': 'border-purple-300 bg-purple-50'
+                }[switchData.type] || 'border-gray-300 bg-gray-50';
+                
+                switchDiv.className = `${switchTypeColor} border rounded-lg p-6 shadow-sm`;
+                
+                // Calculate port statistics using global topology data
+                const totalPorts = switchData.ports.length;
+                const connectedPorts = switchData.ports.filter(p => p.status === 'CONNECTED').length;
+                
+                // Count host connections
+                let hostPorts = 0;
+                if (hostsData) {
+                    hostPorts = hostsData.filter(host => host.switchId === switchData.id).length;
+                }
+                
+                // Count switch connections (both inbound and outbound)
+                let switchPorts = 0;
+                if (connectionsData) {
+                    switchPorts = connectionsData.filter(conn => 
+                        conn.sourceSwitch === switchData.id || conn.targetSwitch === switchData.id
+                    ).length;
+                }
+                
+                const avgUtilization = switchData.ports.reduce((sum, p) => sum + (p.utilization || 0), 0) / totalPorts;
+                
+                switchDiv.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-800">${switchData.name}</h3>
+                            <p class="text-sm text-gray-600">${switchData.type?.toUpperCase() || 'UNKNOWN'} • ${switchData.model}</p>
+                            <p class="text-xs text-gray-500">${switchData.location}</p>
+                        </div>
+                        <div class="text-right text-xs text-gray-600">
+                            <div>CPU: ${switchData.cpu || 0}%</div>
+                            <div>Memory: ${switchData.memory || 0}%</div>
+                            <div>Temp: ${switchData.temperature || 0}°C</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4 grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-white p-2 rounded">
+                            <div class="font-semibold text-gray-700">Ports</div>
+                            <div>${connectedPorts}/${totalPorts} active</div>
+                        </div>
+                        <div class="bg-white p-2 rounded">
+                            <div class="font-semibold text-gray-700">Connections</div>
+                            <div>Hosts: ${hostPorts} | Switches: ${switchPorts}</div>
+                        </div>
+                        <div class="bg-white p-2 rounded">
+                            <div class="font-semibold text-gray-700">Avg Utilization</div>
+                            <div>${avgUtilization.toFixed(1)}%</div>
+                        </div>
+                        <div class="bg-white p-2 rounded">
+                            <div class="font-semibold text-gray-700">Management IP</div>
+                            <div>${switchData.managementIp || 'N/A'}</div>
+                        </div>
+                    </div>
+                `;
+                
+                const portsDiv = document.createElement('div');
+                portsDiv.className = 'grid grid-cols-6 gap-1';
+                
+                switchData.ports.forEach((port, index) => {
+                    const portDiv = document.createElement('div');
+                    let portColor = 'bg-gray-500 border-gray-700'; // Default for unknown status
+                    
+                    // Determine color based on priority: SFP issues > Connection status
+                    if (port.sfpStatus === 'incorrect') {
+                        portColor = 'bg-orange-500 border-orange-700';  // Orange for SFP mismatch
+                    } else if (port.status === 'CONNECTED') {
+                        portColor = 'bg-green-500 border-green-700';    // Green for connected
+                    } else if (port.status === 'CABLE_CUT') {
+                        portColor = 'bg-red-500 border-red-700';        // Red for cable cut
+                    } else if (port.status === 'PLUGGED_OUT') {
+                        portColor = 'bg-yellow-500 border-yellow-700';  // Yellow for unplugged
+                    } else if (port.status === 'TRAFFIC_DROP') {
+                        portColor = 'bg-purple-500 border-purple-700';  // Purple for traffic drop
+                    } else {
+                        portColor = 'bg-red-500 border-red-700';        // Red for any other disconnected state
+                    }
+                    
+                    // Determine connection icon and info using global topology data
+                    let connectionIcon = '';
+                    let connectionInfo = '';
+                    
+                    // Check if this port has a host connected
+                    if (hostsData) {
+                        const connectedHost = hostsData.find(host => 
+                            host.switchId === switchData.id && host.portNumber === port.portNumber
+                        );
+                        if (connectedHost) {
+                            connectionIcon = '💻';
+                            connectionInfo = connectedHost.name || 'Host';
+                        }
+                    }
+                    
+                    // Check if this port has a switch connection
+                    if (!connectionIcon && connectionsData) {
+                        const connection = connectionsData.find(conn => 
+                            (conn.sourceSwitch === switchData.id && conn.sourcePort === port.portNumber) ||
+                            (conn.targetSwitch === switchData.id && conn.targetPort === port.portNumber)
+                        );
+                        if (connection) {
+                            connectionIcon = '🔗';
+                            const otherSide = connection.sourceSwitch === switchData.id ? 
+                                `${connection.targetSwitch}:${connection.targetPort}` :
+                                `${connection.sourceSwitch}:${connection.sourcePort}`;
+                            connectionInfo = otherSide;
+                        }
+                    }
+                    
+                    // Port capacity indicator
+                    const capacityColor = port.capacityGbps >= 100 ? 'text-red-600' : 
+                                         port.capacityGbps >= 25 ? 'text-orange-600' :
+                                         port.capacityGbps >= 10 ? 'text-blue-600' : 'text-green-600';
+                    
+                    portDiv.className = `w-16 h-16 flex flex-col items-center justify-center rounded-md border-2 ${portColor} text-white font-bold text-xs transition-all cursor-pointer hover:scale-105 relative group`;
+                    portDiv.innerHTML = `
+                        <div class="text-xs font-bold">${port.portNumber}</div>
+                        <div class="text-xs">${connectionIcon}</div>
+                        
+                        <!-- Tooltip -->
+                        <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
+                            <div><strong>Port ${port.portNumber}</strong> (${port.portType || 'unknown'})</div>
+                            <div>Status: ${port.status}</div>
+                            <div>SFP: ${port.sfpType}</div>
+                            <div class="${capacityColor}">Capacity: ${port.capacityGbps || 1}G</div>
+                            <div>Utilization: ${port.utilization || 0}%</div>
+                            <div>VLAN: ${port.vlan || 'default'}</div>
+                            ${connectionInfo ? `<div>Connected: ${connectionInfo}</div>` : ''}
+                            ${port.description ? `<div>${port.description}</div>` : ''}
+                        </div>
+                    `;
+                    
+                    portsDiv.appendChild(portDiv);
+                });
+                
+                switchDiv.appendChild(portsDiv);
+                container.appendChild(switchDiv);
+            });
+        }
+
+        function renderConnections(connections) {
+            const container = document.getElementById('connections-list');
+            
+            if (connections.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">No connections configured</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            connections.forEach(connection => {
+                const connectionDiv = document.createElement('div');
+                const statusColor = connection.status === 'active' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800';
+                
+                connectionDiv.className = `p-4 border rounded-lg ${statusColor}`;
+                connectionDiv.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h4 class="font-semibold">${connection.sourceSwitch}:${connection.sourcePort} ↔ ${connection.targetSwitch}:${connection.targetPort}</h4>
+                            <p class="text-sm opacity-75">
+                                ${connection.cableType || 'Unknown'} • ${connection.cableLength || 'Unknown length'} • ${connection.protocol || 'ethernet'}
+                            </p>
+                        </div>
+                        <div class="text-sm">
+                            <span class="px-2 py-1 rounded ${connection.status === 'active' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}">
+                                ${connection.status || 'unknown'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(connectionDiv);
+            });
+        }
+
+        function renderHosts(hosts) {
+            const container = document.getElementById('hosts-list');
+            
+            if (hosts.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4 col-span-3">No hosts connected</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            hosts.forEach(host => {
+                const hostDiv = document.createElement('div');
+                const hostTypeColor = {
+                    'server': 'bg-blue-50 border-blue-200',
+                    'storage': 'bg-purple-50 border-purple-200',
+                    'security': 'bg-red-50 border-red-200',
+                    'network': 'bg-green-50 border-green-200'
+                }[host.type] || 'bg-gray-50 border-gray-200';
+                
+                const statusColor = host.status === 'active' ? 'bg-green-500' : 'bg-red-500';
+                
+                hostDiv.className = `${hostTypeColor} border rounded-lg p-4 shadow-sm`;
+                hostDiv.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h4 class="font-semibold text-gray-800">${host.name}</h4>
+                            <p class="text-sm text-gray-600">${host.type?.toUpperCase() || 'UNKNOWN'}</p>
+                        </div>
+                        <div class="w-3 h-3 rounded-full ${statusColor}"></div>
+                    </div>
+                    
+                    <div class="space-y-2 text-sm text-gray-700">
+                        <div><strong>IP:</strong> ${host.ip}</div>
+                        <div><strong>Switch:</strong> ${host.switchId}:${host.portNumber}</div>
+                        <div><strong>VLAN:</strong> ${host.vlan || 'default'}</div>
+                        <div><strong>OS:</strong> ${host.os || 'Unknown'}</div>
+                        ${host.location ? `<div><strong>Location:</strong> ${host.location}</div>` : ''}
+                    </div>
+                    
+                    ${host.services && host.services.length > 0 ? `
+                        <div class="mt-3">
+                            <div class="text-xs text-gray-500 mb-1">Services:</div>
+                            <div class="flex flex-wrap gap-1">
+                                ${host.services.map(service => 
+                                    `<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">${service}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    ${host.cpuCores || host.memoryGb || host.storageGb ? `
+                        <div class="mt-3 pt-3 border-t border-gray-200">
+                            <div class="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                                ${host.cpuCores ? `<div><strong>CPU:</strong> ${host.cpuCores} cores</div>` : ''}
+                                ${host.memoryGb ? `<div><strong>RAM:</strong> ${host.memoryGb}GB</div>` : ''}
+                                ${host.storageGb ? `<div><strong>Storage:</strong> ${host.storageGb}GB</div>` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+                `;
+                
+                container.appendChild(hostDiv);
+            });
+        }
+
+        function renderIssues(issues) {
+            const container = document.getElementById('issues-list');
+            
+            if (issues.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">No current issues 🎉</p>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            issues.forEach(issue => {
+                const issueDiv = document.createElement('div');
+                const severityColor = {
+                    'CRITICAL': 'bg-red-50 border-red-200 text-red-800',
+                    'ERROR': 'bg-orange-50 border-orange-200 text-orange-800',
+                    'WARNING': 'bg-yellow-50 border-yellow-200 text-yellow-800',
+                    'INFO': 'bg-blue-50 border-blue-200 text-blue-800'
+                }[issue.severity] || 'bg-gray-50 border-gray-200 text-gray-800';
+                
+                issueDiv.className = `p-4 border rounded-lg ${severityColor}`;
+                issueDiv.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h4 class="font-semibold">${issue.type.replace('_', ' ')}</h4>
+                            <p class="text-sm mt-1">${issue.description}</p>
+                            <p class="text-xs mt-2 opacity-75">
+                                ${new Date(issue.timestamp).toLocaleString()} | 
+                                Severity: ${issue.severity}
+                            </p>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-medium bg-white rounded-full">
+                            ${issue.severity}
+                        </span>
+                    </div>
+                `;
+                
+                container.appendChild(issueDiv);
+            });
+        }
+
+        async function simulateIssue(type) {
+            try {
+                const response = await fetch(`${API_BASE}/network/simulate/${type}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json' 
+                    },
+                    body: JSON.stringify({})  // Send empty JSON object instead of no body
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    refreshData();
+                } else {
+                    showMessage(`Simulation failed: ${data.message}`, 'error');
+                    console.error('Simulation error:', data);
+                }
+            } catch (error) {
+                console.error('Error simulating issue:', error);
+                showMessage('Error simulating issue: ' + error.message, 'error');
+            }
+        }
+
+        async function resetNetwork() {
+            try {
+                const response = await fetch(`${API_BASE}/network/reset`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json' 
+                    },
+                    body: JSON.stringify({})  // Send empty JSON object
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    refreshData();
+                } else {
+                    showMessage(`Reset failed: ${data.message}`, 'error');
+                    console.error('Reset error:', data);
+                }
+            } catch (error) {
+                console.error('Error resetting network:', error);
+                showMessage('Error resetting network: ' + error.message, 'error');
+            }
+        }
+
+        async function showAPIDoc() {
+            try {
+                const response = await fetch(`${API_BASE}/docs`);
+                const docs = await response.json();
+                
+                const content = document.getElementById('api-docs-content');
+                content.innerHTML = `
+                    <div class="space-y-6">
+                        <div>
+                            <h3 class="text-lg font-semibold mb-2">${docs.title}</h3>
+                            <p class="text-gray-600">${docs.description}</p>
+                            <p class="text-sm text-gray-500 mt-1">Version: ${docs.version}</p>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold mb-3">API Endpoints</h4>
+                            <div class="space-y-3">
+                                ${Object.entries(docs.endpoints).map(([endpoint, info]) => `
+                                    <div class="border rounded-lg p-3">
+                                        <code class="text-blue-600 font-medium">${endpoint}</code>
+                                        <p class="text-sm text-gray-600 mt-1">${info.description}</p>
+                                        ${info.parameters ? `<p class="text-xs text-gray-500 mt-1">Parameters: ${JSON.stringify(info.parameters)}</p>` : ''}
+                                        ${info.body ? `<p class="text-xs text-gray-500 mt-1">Body: ${JSON.stringify(info.body)}</p>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold mb-3">Usage Examples</h4>
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <pre class="text-sm">${JSON.stringify(docs.usageExample, null, 2)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('api-modal').classList.remove('hidden');
+                document.getElementById('api-modal').classList.add('flex');
+            } catch (error) {
+                console.error('Error loading API docs:', error);
+                showMessage('Error loading API documentation', 'error');
+            }
+        }
+
+        function hideAPIDoc() {
+            document.getElementById('api-modal').classList.add('hidden');
+            document.getElementById('api-modal').classList.remove('flex');
+        }
+
+        function showMessage(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500' : 
+                           type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+            
+            alertDiv.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all`;
+            alertDiv.textContent = message;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 3000);
+        }
+
+        // Topology Management Functions
+        async function uploadTopologyFile() {
+            const fileInput = document.getElementById('topology-file');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showMessage('Please select a topology file first', 'error');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${API_BASE}/network/topology/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`✅ ${data.message}`, 'success');
+                    refreshData();
+                    
+                    // Show upload details
+                    const details = data.data;
+                    const detailsMsg = `
+                        📁 File: ${details.filename}
+                        🏗️ Switches: ${details.switches_count}
+                        🔌 Total Ports: ${details.total_ports}
+                        ${details.warnings.length > 0 ? `⚠️ Warnings: ${details.warnings.length}` : ''}
+                    `;
+                    showMessage(detailsMsg, 'info');
+                } else {
+                    showMessage(`❌ Upload failed: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error uploading topology:', error);
+                showMessage('❌ Error uploading topology: ' + error.message, 'error');
+            }
+        }
+
+        async function validateTopologyFile() {
+            const fileInput = document.getElementById('topology-file');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showMessage('Please select a topology file first', 'error');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${API_BASE}/network/topology/validate`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                showValidationResults(data.data);
+                
+                if (data.success && data.data.valid) {
+                    showMessage('✅ Topology validation passed!', 'success');
+                } else {
+                    showMessage(`⚠️ Validation completed with ${data.data.errors.length} errors`, 'warning');
+                }
+            } catch (error) {
+                console.error('Error validating topology:', error);
+                showMessage('❌ Error validating topology: ' + error.message, 'error');
+            }
+        }
+
+        function showValidationResults(validation) {
+            const resultsDiv = document.getElementById('validation-results');
+            const contentDiv = document.getElementById('validation-content');
+            
+            let html = `
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-2">
+                        <span class="font-semibold">Status:</span>
+                        <span class="px-2 py-1 rounded-full text-sm ${validation.valid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${validation.valid ? '✅ Valid' : '❌ Invalid'}
+                        </span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <h4 class="font-medium text-gray-700">Summary</h4>
+                            <ul class="text-sm text-gray-600 mt-1">
+                                <li>Switches: ${validation.summary.total_switches}</li>
+                                <li>Ports: ${validation.summary.total_ports}</li>
+                                <li>Unique IDs: ${validation.summary.unique_switch_ids}/${validation.summary.unique_port_ids}</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-700">Issues</h4>
+                            <ul class="text-sm text-gray-600 mt-1">
+                                <li class="text-red-600">Errors: ${validation.errors.length}</li>
+                                <li class="text-yellow-600">Warnings: ${validation.warnings.length}</li>
+                            </ul>
+                        </div>
+                    </div>
+            `;
+            
+            if (validation.errors.length > 0) {
+                html += `
+                    <div>
+                        <h4 class="font-medium text-red-700">Errors</h4>
+                        <ul class="text-sm text-red-600 mt-1 space-y-1">
+                            ${validation.errors.map(error => `<li>• ${error}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            if (validation.warnings.length > 0) {
+                html += `
+                    <div>
+                        <h4 class="font-medium text-yellow-700">Warnings</h4>
+                        <ul class="text-sm text-yellow-600 mt-1 space-y-1">
+                            ${validation.warnings.map(warning => `<li>• ${warning}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            contentDiv.innerHTML = html;
+            resultsDiv.classList.remove('hidden');
+        }
+
+        async function exportTopology(format) {
+            try {
+                const response = await fetch(`${API_BASE}/network/topology/export?format=${format}`);
+                
+                if (format === 'json') {
+                    const data = await response.json();
+                    downloadFile(JSON.stringify(data.data, null, 2), `topology_${Date.now()}.json`, 'application/json');
+                    showMessage(`📁 Topology exported as JSON`, 'success');
+                } else if (format === 'xml') {
+                    const xmlData = await response.text();
+                    downloadFile(xmlData, `topology_${Date.now()}.xml`, 'application/xml');
+                    showMessage(`📁 Topology exported as XML`, 'success');
+                } else if (format === 'yaml') {
+                    const yamlData = await response.text();
+                    downloadFile(yamlData, `topology_${Date.now()}.yaml`, 'application/x-yaml');
+                    showMessage(`📁 Topology exported as YAML`, 'success');
+                }
+            } catch (error) {
+                console.error('Error exporting topology:', error);
+                showMessage('❌ Error exporting topology: ' + error.message, 'error');
+            }
+        }
+
+        function downloadFile(content, filename, contentType) {
+            const blob = new Blob([content], { type: contentType });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        async function loadSampleTopology() {
+            const sampleTopology = {
+                "switches": [
+                    {
+                        "id": "sample-switch-0",
+                        "name": "Sample Core Switch",
+                        "location": "Demo Data Center",
+                        "model": "Virtual Switch",
+                        "ports": [
+                            {
+                                "id": "sample-switch-0-port-0",
+                                "switchId": "sample-switch-0",
+                                "portNumber": 1,
+                                "status": "CONNECTED",
+                                "sfpType": "LR",
+                                "sfpStatus": "correct",
+                                "requiredSfpType": "LR",
+                                "lastUpdated": new Date().toISOString()
+                            },
+                            {
+                                "id": "sample-switch-0-port-1",
+                                "switchId": "sample-switch-0",
+                                "portNumber": 2,
+                                "status": "CONNECTED",
+                                "sfpType": "SR",
+                                "sfpStatus": "correct",
+                                "requiredSfpType": "SR",
+                                "lastUpdated": new Date().toISOString()
+                            },
+                            {
+                                "id": "sample-switch-0-port-2",
+                                "switchId": "sample-switch-0",
+                                "portNumber": 3,
+                                "status": "DISCONNECTED",
+                                "sfpType": "ZR",
+                                "sfpStatus": "correct",
+                                "requiredSfpType": "ZR",
+                                "lastUpdated": new Date().toISOString()
+                            }
+                        ]
+                    },
+                    {
+                        "id": "sample-switch-1",
+                        "name": "Sample Access Switch",
+                        "location": "Demo Floor 1",
+                        "model": "Virtual Switch",
+                        "ports": [
+                            {
+                                "id": "sample-switch-1-port-0",
+                                "switchId": "sample-switch-1",
+                                "portNumber": 1,
+                                "status": "CONNECTED",
+                                "sfpType": "SR",
+                                "sfpStatus": "correct",
+                                "requiredSfpType": "SR",
+                                "lastUpdated": new Date().toISOString()
+                            },
+                            {
+                                "id": "sample-switch-1-port-1",
+                                "switchId": "sample-switch-1",
+                                "portNumber": 2,
+                                "status": "CONNECTED",
+                                "sfpType": "LR",
+                                "sfpStatus": "mismatch",
+                                "requiredSfpType": "SR",
+                                "lastUpdated": new Date().toISOString()
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/network/topology`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(sampleTopology)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('🎯 Sample topology loaded successfully!', 'success');
+                    refreshData();
+                } else {
+                    showMessage(`❌ Failed to load sample topology: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading sample topology:', error);
+                showMessage('❌ Error loading sample topology: ' + error.message, 'error');
+            }
+        }
+
+        // Network Topology Visualization Functions
+        
+        function toggleTopologyView(view) {
+            const diagramView = document.getElementById('topology-diagram');
+            const tableView = document.getElementById('topology-table');
+            const btnDiagram = document.getElementById('btn-diagram');
+            const btnTable = document.getElementById('btn-table');
+            
+            if (view === 'diagram') {
+                diagramView.classList.remove('hidden');
+                tableView.classList.add('hidden');
+                btnDiagram.className = 'px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600';
+                btnTable.className = 'px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600';
+                renderNetworkDiagram();
+            } else {
+                diagramView.classList.add('hidden');
+                tableView.classList.remove('hidden');
+                btnDiagram.className = 'px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600';
+                btnTable.className = 'px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600';
+            }
+        }
+
+        function renderNetworkDiagram() {
+            if (!topologyData) return;
+            
+            const svg = document.getElementById('network-svg');
+            const svgRect = svg.getBoundingClientRect();
+            const width = svgRect.width || 800;
+            const height = 600;
+            
+            // Clear existing content
+            svg.innerHTML = '';
+            
+            // Create hierarchy layers
+            const layers = organizeDevicesByHierarchy();
+            
+            if (currentLayout === 'hierarchical') {
+                renderHierarchicalLayout(svg, layers, width, height);
+            } else {
+                renderCircularLayout(svg, layers, width, height);
+            }
+        }
+
+        function organizeDevicesByHierarchy() {
+            const layers = {
+                core: [],
+                aggregation: [],
+                access: [],
+                edge: [],
+                hosts: []
+            };
+            
+            // Organize switches by type
+            if (topologyData) {
+                topologyData.forEach(switchData => {
+                    const type = switchData.type || 'access';
+                    if (layers[type]) {
+                        layers[type].push({
+                            ...switchData,
+                            deviceType: 'switch'
+                        });
+                    } else {
+                        layers.access.push({
+                            ...switchData,
+                            deviceType: 'switch'
+                        });
+                    }
+                });
+            }
+            
+            // Add hosts
+            if (hostsData) {
+                hostsData.forEach(host => {
+                    layers.hosts.push({
+                        ...host,
+                        deviceType: 'host'
+                    });
+                });
+            }
+            
+            return layers;
+        }
+
+        function renderHierarchicalLayout(svg, layers, width, height) {
+            const layerHeight = height / 5;
+            const layerOrder = ['core', 'aggregation', 'access', 'edge', 'hosts'];
+            
+            let allNodes = [];
+            let allConnections = [];
+            
+            layerOrder.forEach((layerName, layerIndex) => {
+                const devices = layers[layerName];
+                if (devices.length === 0) return;
+                
+                const y = layerHeight * (layerIndex + 0.5);
+                const spacing = width / (devices.length + 1);
+                
+                devices.forEach((device, deviceIndex) => {
+                    const x = spacing * (deviceIndex + 1);
+                    const node = {
+                        ...device,
+                        x: x,
+                        y: y,
+                        layer: layerName
+                    };
+                    allNodes.push(node);
+                    
+                    renderDeviceNode(svg, node);
+                });
+            });
+            
+            // Render connections
+            if (connectionsData) {
+                connectionsData.forEach(connection => {
+                    renderConnection(svg, connection, allNodes);
+                });
+            }
+            
+            // Render port-level connections for hosts
+            renderHostConnections(svg, allNodes);
+        }
+
+        function renderCircularLayout(svg, layers, width, height) {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const maxRadius = Math.min(width, height) / 2 - 100;
+            
+            let allNodes = [];
+            const layerOrder = ['core', 'aggregation', 'access', 'edge'];
+            
+            // Core switches in center
+            if (layers.core.length > 0) {
+                layers.core.forEach((device, index) => {
+                    const angle = (index / layers.core.length) * 2 * Math.PI;
+                    const radius = 50;
+                    const node = {
+                        ...device,
+                        x: centerX + radius * Math.cos(angle),
+                        y: centerY + radius * Math.sin(angle),
+                        layer: 'core'
+                    };
+                    allNodes.push(node);
+                    renderDeviceNode(svg, node);
+                });
+            }
+            
+            // Other switches in rings
+            layerOrder.slice(1).forEach((layerName, ringIndex) => {
+                const devices = layers[layerName];
+                if (devices.length === 0) return;
+                
+                const radius = (ringIndex + 1) * (maxRadius / 4) + 80;
+                
+                devices.forEach((device, index) => {
+                    const angle = (index / devices.length) * 2 * Math.PI;
+                    const node = {
+                        ...device,
+                        x: centerX + radius * Math.cos(angle),
+                        y: centerY + radius * Math.sin(angle),
+                        layer: layerName
+                    };
+                    allNodes.push(node);
+                    renderDeviceNode(svg, node);
+                });
+            });
+            
+            // Hosts on outer ring
+            if (layers.hosts.length > 0) {
+                layers.hosts.forEach((device, index) => {
+                    const angle = (index / layers.hosts.length) * 2 * Math.PI;
+                    const radius = maxRadius - 20;
+                    const node = {
+                        ...device,
+                        x: centerX + radius * Math.cos(angle),
+                        y: centerY + radius * Math.sin(angle),
+                        layer: 'hosts'
+                    };
+                    allNodes.push(node);
+                    renderDeviceNode(svg, node);
+                });
+            }
+            
+            // Render connections
+            if (connectionsData) {
+                connectionsData.forEach(connection => {
+                    renderConnection(svg, connection, allNodes);
+                });
+            }
+            
+            renderHostConnections(svg, allNodes);
+        }
+
+        function renderDeviceNode(svg, node) {
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('class', 'network-node');
+            g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+            
+            if (node.deviceType === 'switch') {
+                renderSwitchNode(g, node);
+            } else {
+                renderHostNode(g, node);
+            }
+            
+            // Add click handler
+            g.onclick = () => showNodeDetails(node);
+            
+            svg.appendChild(g);
+        }
+
+        function renderSwitchNode(g, switchNode) {
+            const typeColors = {
+                'core': { bg: '#fee2e2', border: '#dc2626', icon: '🏢' },
+                'aggregation': { bg: '#dbeafe', border: '#2563eb', icon: '🔄' },
+                'access': { bg: '#dcfce7', border: '#16a34a', icon: '🔌' },
+                'edge': { bg: '#f3e8ff', border: '#9333ea', icon: '🌐' }
+            };
+            
+            const colors = typeColors[switchNode.type] || typeColors['access'];
+            
+            // Main switch rectangle
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', -50);
+            rect.setAttribute('y', -30);
+            rect.setAttribute('width', 100);
+            rect.setAttribute('height', 60);
+            rect.setAttribute('rx', 8);
+            rect.setAttribute('fill', colors.bg);
+            rect.setAttribute('stroke', colors.border);
+            rect.setAttribute('stroke-width', 2);
+            g.appendChild(rect);
+            
+            // Switch icon
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            icon.setAttribute('x', 0);
+            icon.setAttribute('y', -10);
+            icon.setAttribute('class', 'device-icon');
+            icon.textContent = colors.icon;
+            g.appendChild(icon);
+            
+            // Switch name
+            const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            name.setAttribute('x', 0);
+            name.setAttribute('y', 10);
+            name.setAttribute('class', 'node-label');
+            name.setAttribute('fill', colors.border);
+            name.textContent = switchNode.name || switchNode.id;
+            g.appendChild(name);
+            
+            // Port indicators
+            if (switchNode.ports) {
+                renderSwitchPorts(g, switchNode);
+            }
+            
+            // Status indicator
+            const activePorts = switchNode.ports ? switchNode.ports.filter(p => p.status === 'CONNECTED').length : 0;
+            const totalPorts = switchNode.ports ? switchNode.ports.length : 0;
+            
+            const status = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            status.setAttribute('x', 0);
+            status.setAttribute('y', 25);
+            status.setAttribute('class', 'node-label');
+            status.setAttribute('fill', '#6b7280');
+            status.setAttribute('font-size', '10');
+            status.textContent = `${activePorts}/${totalPorts} ports`;
+            g.appendChild(status);
+        }
+
+        function renderSwitchPorts(g, switchNode) {
+            const portsPerSide = Math.ceil(switchNode.ports.length / 4);
+            const portSize = 4;
+            const spacing = 8;
+            
+            switchNode.ports.forEach((port, index) => {
+                const side = Math.floor(index / portsPerSide);
+                const positionOnSide = index % portsPerSide;
+                
+                let x, y;
+                
+                switch (side) {
+                    case 0: // Top
+                        x = -40 + (positionOnSide * spacing);
+                        y = -30;
+                        break;
+                    case 1: // Right  
+                        x = 50;
+                        y = -20 + (positionOnSide * spacing);
+                        break;
+                    case 2: // Bottom
+                        x = 40 - (positionOnSide * spacing);
+                        y = 30;
+                        break;
+                    case 3: // Left
+                        x = -50;
+                        y = 20 - (positionOnSide * spacing);
+                        break;
+                }
+                
+                const portCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                portCircle.setAttribute('cx', x);
+                portCircle.setAttribute('cy', y);
+                portCircle.setAttribute('r', portSize);
+                portCircle.setAttribute('class', 'port-circle');
+                
+                // Determine color based on priority: SFP issues > Connection status
+                let portColor = '#6b7280'; // Default gray for unknown status
+                
+                if (port.sfpStatus === 'incorrect') {
+                    portColor = '#f59e0b';   // Orange (#f59e0b = bg-orange-500) for SFP mismatch
+                } else if (port.status === 'CONNECTED') {
+                    portColor = '#10b981';   // Green (#10b981 = bg-green-500) for connected
+                } else if (port.status === 'CABLE_CUT') {
+                    portColor = '#ef4444';   // Red (#ef4444 = bg-red-500) for cable cut
+                } else if (port.status === 'PLUGGED_OUT') {
+                    portColor = '#eab308';   // Yellow (#eab308 = bg-yellow-500) for unplugged
+                } else if (port.status === 'TRAFFIC_DROP') {
+                    portColor = '#a855f7';   // Purple (#a855f7 = bg-purple-500) for traffic drop
+                } else {
+                    portColor = '#ef4444';   // Red for any other disconnected state
+                }
+                
+                portCircle.setAttribute('fill', portColor);
+                portCircle.setAttribute('stroke', '#374151');
+                portCircle.setAttribute('stroke-width', 1);
+                portCircle.setAttribute('class', 'port-circle');
+                
+                // Store port info for connections
+                port._x = switchNode.x + x;
+                port._y = switchNode.y + y;
+                
+                // Add tooltip
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                title.textContent = `Port ${port.portNumber}: ${port.status}\nSFP: ${port.sfpType}\nCapacity: ${port.capacityGbps || 'Unknown'}Gbps`;
+                portCircle.appendChild(title);
+                
+                g.appendChild(portCircle);
+            });
+        }
+
+        function renderHostNode(g, hostNode) {
+            const typeColors = {
+                'server': { bg: '#dbeafe', border: '#2563eb', icon: '🖥️' },
+                'storage': { bg: '#f3e8ff', border: '#9333ea', icon: '💾' },
+                'security': { bg: '#fee2e2', border: '#dc2626', icon: '🛡️' },
+                'network': { bg: '#dcfce7', border: '#16a34a', icon: '📡' }
+            };
+            
+            const colors = typeColors[hostNode.type] || typeColors['server'];
+            
+            // Host rectangle
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', -30);
+            rect.setAttribute('y', -20);
+            rect.setAttribute('width', 60);
+            rect.setAttribute('height', 40);
+            rect.setAttribute('rx', 6);
+            rect.setAttribute('fill', colors.bg);
+            rect.setAttribute('stroke', colors.border);
+            rect.setAttribute('stroke-width', 2);
+            g.appendChild(rect);
+            
+            // Host icon
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            icon.setAttribute('x', 0);
+            icon.setAttribute('y', -5);
+            icon.setAttribute('class', 'device-icon');
+            icon.textContent = colors.icon;
+            g.appendChild(icon);
+            
+            // Host name
+            const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            name.setAttribute('x', 0);
+            name.setAttribute('y', 15);
+            name.setAttribute('class', 'node-label');
+            name.setAttribute('fill', colors.border);
+            name.setAttribute('font-size', '10');
+            name.textContent = hostNode.name || hostNode.ip;
+            g.appendChild(name);
+            
+            // Status dot
+            const statusDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            statusDot.setAttribute('cx', 25);
+            statusDot.setAttribute('cy', -15);
+            statusDot.setAttribute('r', 4);
+            statusDot.setAttribute('fill', hostNode.status === 'active' ? '#10b981' : '#ef4444');
+            g.appendChild(statusDot);
+        }
+
+        function renderConnection(svg, connection, allNodes) {
+            const sourceNode = allNodes.find(n => n.id === connection.sourceSwitch);
+            const targetNode = allNodes.find(n => n.id === connection.targetSwitch);
+            
+            if (!sourceNode || !targetNode || !sourceNode.ports || !targetNode.ports) return;
+            
+            // Find the specific ports involved in the connection
+            const sourcePort = sourceNode.ports.find(p => p.portNumber === connection.sourcePort);
+            const targetPort = targetNode.ports.find(p => p.portNumber === connection.targetPort);
+            
+            if (!sourcePort || !targetPort || !sourcePort._x || !targetPort._x) return;
+            
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', sourcePort._x);
+            line.setAttribute('y1', sourcePort._y);
+            line.setAttribute('x2', targetPort._x);
+            line.setAttribute('y2', targetPort._y);
+            line.setAttribute('class', 'connection-line');
+            
+            // Use connection status from backend - check both connection status and port status
+            const isConnectionActive = connection.status === 'active' && 
+                                     sourcePort.status === 'CONNECTED' && 
+                                     targetPort.status === 'CONNECTED';
+            
+            const strokeColor = isConnectionActive ? '#10b981' : '#ef4444'; // Green for active, Red for inactive
+            line.setAttribute('stroke', strokeColor);
+            line.setAttribute('stroke-width', getConnectionLineWidth(connection));
+            line.setAttribute('data-connection-id', `${connection.sourceSwitch}-${connection.targetSwitch}`);
+            
+            if (!isConnectionActive) {
+                line.setAttribute('stroke-dasharray', '5,5'); // Dashed line for inactive connections
+            }
+            
+            // Add connection label at midpoint
+            const midX = (sourcePort._x + targetPort._x) / 2;
+            const midY = (sourcePort._y + targetPort._y) / 2;
+            
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('x', midX);
+            label.setAttribute('y', midY - 5);
+            label.setAttribute('class', 'node-label');
+            label.setAttribute('font-size', '9');
+            label.setAttribute('fill', isConnectionActive ? '#6b7280' : '#ef4444');
+            label.setAttribute('text-anchor', 'middle');
+            label.textContent = `${connection.cableType || 'ETH'} ${connection.cableLength || ''}`;
+            
+            // Add tooltip
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${connection.sourceSwitch}:${connection.sourcePort} ↔ ${connection.targetSwitch}:${connection.targetPort}\nConnection Status: ${connection.status}\nSource Port: ${sourcePort.status}\nTarget Port: ${targetPort.status}\nType: ${connection.cableType || 'Ethernet'}\nLength: ${connection.cableLength || 'Unknown'}`;
+            line.appendChild(title);
+            
+            svg.appendChild(line);
+            svg.appendChild(label);
+        }
+
+        function renderHostConnections(svg, allNodes) {
+            if (!hostsData || !topologyData) return;
+            
+            hostsData.forEach(host => {
+                const hostNode = allNodes.find(n => n.id === host.id);
+                const switchNode = allNodes.find(n => n.id === host.switchId);
+                
+                if (hostNode && switchNode && switchNode.ports) {
+                    // Find the specific port the host is connected to
+                    const connectedPort = switchNode.ports.find(p => p.portNumber === host.portNumber);
+                    
+                    if (connectedPort && connectedPort._x !== undefined) {
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', hostNode.x);
+                        line.setAttribute('y1', hostNode.y);
+                        line.setAttribute('x2', connectedPort._x);
+                        line.setAttribute('y2', connectedPort._y);
+                        line.setAttribute('stroke', host.status === 'active' ? '#10b981' : '#ef4444');
+                        line.setAttribute('stroke-width', 2);
+                        line.setAttribute('class', 'connection-line');
+                        
+                        // Add host connection tooltip
+                        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                        title.textContent = `${host.name} (${host.ip}) ↔ ${switchNode.name}:Port ${host.portNumber}`;
+                        line.appendChild(title);
+                        
+                        svg.appendChild(line);
+                    }
+                }
+            });
+        }
+
+        function getConnectionLineWidth(connection) {
+            // Base width on connection type and capacity
+            if (connection.cableType === 'fiber') {
+                const bandwidth = connection.bandwidth || '1G';
+                const bw = parseInt(bandwidth);
+                if (bw >= 100) return 4;      // 100G+ fiber
+                if (bw >= 25) return 3;       // 25G-100G fiber  
+                if (bw >= 10) return 2;       // 10G-25G fiber
+                return 2;                     // <10G fiber
+            } else {
+                return 2;                     // Copper/other
+            }
+        }
+
+        function showNodeDetails(node) {
+            let details = `<strong>${node.name || node.id}</strong><br/>`;
+            details += `Type: ${node.deviceType}<br/>`;
+            
+            if (node.deviceType === 'switch') {
+                details += `Model: ${node.model || 'Unknown'}<br/>`;
+                details += `Location: ${node.location || 'Unknown'}<br/>`;
+                details += `Ports: ${node.ports ? node.ports.length : 0}<br/>`;
+                if (node.managementIp) details += `Management IP: ${node.managementIp}<br/>`;
+            } else {
+                details += `IP: ${node.ip || 'Unknown'}<br/>`;
+                details += `Status: ${node.status || 'Unknown'}<br/>`;
+                if (node.os) details += `OS: ${node.os}<br/>`;
+                if (node.location) details += `Location: ${node.location}<br/>`;
+            }
+            
+            showMessage(details, 'info');
+        }
+
+        function zoomTopology(factor) {
+            topologyZoom *= factor;
+            topologyZoom = Math.max(0.5, Math.min(3, topologyZoom)); // Limit zoom range
+            const svg = document.getElementById('network-svg');
+            svg.style.transform = `scale(${topologyZoom})`;
+            svg.style.transformOrigin = 'center center';
+        }
+
+        function resetTopologyZoom() {
+            topologyZoom = 1;
+            const svg = document.getElementById('network-svg');
+            svg.style.transform = 'scale(1)';
+        }
+
+        function changeLayout(layout) {
+            currentLayout = layout;
+            renderNetworkDiagram();
+        }
+
+        function exportTopologyDiagram() {
+            const svg = document.getElementById('network-svg');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const svgUrl = URL.createObjectURL(svgBlob);
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.href = svgUrl;
+            downloadLink.download = `network_topology_${Date.now()}.svg`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            URL.revokeObjectURL(svgUrl);
+            
+            showMessage('📷 Network diagram exported as SVG', 'success');
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('api-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideAPIDoc();
+            }
+        });
+    </script>
+</body>
+</html>

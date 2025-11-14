@@ -64,9 +64,19 @@ This repository demonstrates two complementary workflows built on Capgemini's Ge
 ### LangGraph-based Agents (Recommended)
 - `src/gen_engine_deep_eval/graphs/observer_graph.py` – Observer agent with state machine architecture, checkpointing, and structured state management.
 - `src/gen_engine_deep_eval/graphs/datacenter_graph.py` – DataCenter agent with graph-based remediation workflow, human-in-the-loop support, and state persistence.
+- `src/gen_engine_deep_eval/graphs/gui_datacenter_graph.py` – **NEW**: GUI-driven datacenter agent with dynamic topology discovery (see [GUI Integration](#gui-integration) below).
 - `src/gen_engine_deep_eval/graphs/state_schemas.py` – TypedDict state models for type-safe agent state management.
 - `src/gen_engine_deep_eval/graphs/tools.py` – LangGraph-compatible tool definitions.
 - `src/gen_engine_deep_eval/examples/run_observer_graph.py` – Example demonstrating Observer agent with LangGraph.
+
+### GUI Integration (NEW!)
+- `src/gen_engine_deep_eval/gui_adapter.py` – REST API adapter to transform GUI topology JSON into agent's internal format.
+- `gui/app.py` – Flask-based network simulation tool with web interface and REST API.
+- `gui/datacenter_topology.json` / `gui/datacenter_topology_large.json` – Sample topology files for GUI.
+- **Documentation**:
+  - [GUI_INTEGRATION_GUIDE.md](GUI_INTEGRATION_GUIDE.md) – Complete user guide for GUI mode
+  - [GUI_INTEGRATION_ANALYSIS.md](GUI_INTEGRATION_ANALYSIS.md) – Technical design analysis
+  - [GUI_IMPLEMENTATION_SUMMARY.md](GUI_IMPLEMENTATION_SUMMARY.md) – Implementation details
 
 ### Tests
 - `tests/test_mininet_agent.py` – unit coverage for prompt wiring, credential validation, topology graph filters, and JSON tool contracts.
@@ -255,7 +265,27 @@ Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLErro
 
 ## Setup environment and run the application
 
-### Installing Containernet
+### GUI Mode (Recommended - No sudo required!)
+
+The easiest way to get started is using GUI mode, which doesn't require Mininet/Containernet:
+
+```bash
+# 1. Start GUI simulation tool
+cd gui && uv run python app.py
+# GUI available at http://localhost:5000
+
+# 2. In another terminal, run agent in GUI mode
+uv run python -m gen_engine_deep_eval.datacenter_agent --gui
+
+# 3. Or run the interactive demo
+./demo_gui_integration.sh
+```
+
+**See [GUI_INTEGRATION_GUIDE.md](GUI_INTEGRATION_GUIDE.md) for complete documentation.**
+
+### Mininet/Containernet Mode (Advanced)
+
+For actual network simulation with Mininet/Containernet:
 
 This application now uses **Containernet** instead of Mininet. Containernet is an actively maintained fork with Docker support and full API compatibility.
 

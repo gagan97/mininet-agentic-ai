@@ -32,6 +32,10 @@ from dataclasses import asdict, dataclass, field
 from importlib import import_module
 from pathlib import Path
 
+# Configuration constants for GUI monitoring mode
+GUI_MONITORING_INTERVAL_SECONDS = 180  # 3 minutes between checks
+GUI_MONITORING_ENABLED = True  # Set to False to run once and exit
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
@@ -1155,10 +1159,211 @@ def run_demo(blueprint_path: str | None = None, use_langgraph: bool = True) -> N
         env.stop()
 
 
+def run_gui_demo(
+    gui_url: str = "http://localhost:5000", 
+    user_query: str | None = None,
+    continuous_mode: bool = True,
+    interval_seconds: int = GUI_MONITORING_INTERVAL_SECONDS
+):
+    """Run datacenter agent in GUI mode - fetch topology from GUI API.
+    
+    Args:
+        gui_url: Base URL of GUI simulation tool
+        user_query: Optional user query to guide analysis
+        continuous_mode: If True, run in continuous monitoring loop
+        interval_seconds: Seconds to wait between monitoring iterations
+    """
+    from .graphs.gui_datacenter_graph import build_gui_datacenter_graph, GUIDatacenterState
+    from datetime import datetime
+    
+    logger.info(f"Running datacenter agent in GUI mode, connecting to {gui_url}")
+    
+    # Get API credentials from environment
+    api_base = os.getenv("REST_API_BASE") or os.getenv("GEN_ENGINE_API_BASE")
+    api_key = os.getenv("API_KEY") or os.getenv("GEN_ENGINE_API_KEY")
+    
+    if not api_base or not api_key:
+        logger.error("API credentials not found in environment variables")
+        print("\n❌ ERROR: API credentials required")
+        print("\nPlease set environment variables:")
+        print("  export REST_API_BASE='https://api.generative.engine.capgemini.com/'")
+        print("  export API_KEY='your-api-key'")
+        print("\nOr use alternative names:")
+        print("  export GEN_ENGINE_API_BASE='...'")
+        print("  export GEN_ENGINE_API_KEY='...'")
+        return
+    
+    # Initialize LLM
+    llm = GenerativeEngineLLM(
+        api_base=api_base,
+        api_key=api_key,
+        model="anthropic.claude-3-5-sonnet-20240620-v1:0",
+        max_tokens=4096,
+        temperature=0.05,
+    )
+    
+    # Build GUI workflow
+    graph = build_gui_datacenter_graph(llm)
+    
+    # State tracking for continuous monitoring
+    previous_failure_count = None
+    previous_failures = set()
+    iteration = 0
+    
+    print("\n" + "="*80)
+    print("DATACENTER AGENT - GUI MONITORING MODE")
+    print("="*80)
+    print(f"Mode: {'CONTINUOUS' if continuous_mode else 'SINGLE RUN'}")
+    if continuous_mode:
+        print(f"Monitoring Interval: {interval_seconds} seconds ({interval_seconds//60} minutes)")
+        print("Press Ctrl+C to stop monitoring")
+    print(f"GUI URL: {gui_url}")
+    print("="*80 + "\n")
+    
+    try:
+        while True:
+            iteration += 1
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Initialize state
+            initial_state: GUIDatacenterState = {
+                "gui_url": gui_url,
+                "user_query": user_query or "Analyze network topology and identify any failures requiring remediation.",
+                "status": "idle",
+            }
+            
+            # Run workflow
+            logger.info(f"Starting monitoring iteration {iteration} at {timestamp}")
+            result = graph.invoke(initial_state)
+            
+            # Display results
+            print("\n" + "="*80)
+            print(f"MONITORING ITERATION #{iteration} - {timestamp}")
+            print("="*80 + "\n")
+            
+            if result.get("status") == "error":
+                print(f"❌ ERROR: {result.get('error_message', 'Unknown error')}")
+                if not continuous_mode:
+                    return
+                print(f"\nRetrying in {interval_seconds} seconds...")
+                time.sleep(interval_seconds)
+                continue
+            
+            failure_count = result.get("failure_count", 0)
+            failures = result.get("failures", [])
+            
+            # Create failure signature for comparison
+            current_failures = set()
+            for f in failures:
+                failure_sig = (
+                    f.get("type"),
+                    f.get("switch", str(f.get("link", ""))),
+                    f.get("port", "")
+                )
+                current_failures.add(failure_sig)
+            
+            # Detect changes
+            if previous_failure_count is not None:
+                if failure_count > previous_failure_count:
+                    print("🚨 ALERT: New failures detected!")
+                elif failure_count < previous_failure_count:
+                    print("✅ IMPROVEMENT: Some failures have been resolved!")
+                elif failure_count > 0 and current_failures != previous_failures:
+                    print("🔄 CHANGE: Failure pattern has changed!")
+            
+            # Display current status
+            if failure_count == 0:
+                print("✅ Network Status: HEALTHY")
+                print("\nNo failures detected. Network is operating normally.")
+                
+                # Show topology summary
+                blueprint = result.get("blueprint")
+                if blueprint:
+                    print(f"\nTopology Summary:")
+                    print(f"  - Total Nodes: {len(blueprint.nodes)}")
+                    print(f"  - Switches: {len([n for n in blueprint.nodes if n.node_type == 'switch'])}")
+                    print(f"  - Hosts: {len([n for n in blueprint.nodes if n.node_type == 'host'])}")
+                    print(f"  - Links: {len(blueprint.links)}")
+                    
+                    # Show active connections
+                    link_profiles = result.get("link_profiles", {})
+                    active_links = sum(1 for p in link_profiles.values() if p.status == "up")
+                    print(f"  - Active Links: {active_links}/{len(link_profiles)}")
+            else:
+                print(f"⚠️  Network Status: DEGRADED ({failure_count} failures detected)")
+                print("\n" + result.get("runbook", "No runbook generated"))
+            
+            # Update tracking variables
+            previous_failure_count = failure_count
+            previous_failures = current_failures
+            
+            # Exit if not in continuous mode
+            if not continuous_mode:
+                print("\n" + "="*80)
+                print("Single run complete. Exiting.")
+                print("="*80 + "\n")
+                break
+            
+            # Wait for next iteration
+            print("\n" + "="*80)
+            print(f"Next check in {interval_seconds} seconds ({interval_seconds//60} minutes)")
+            print("Press Ctrl+C to stop monitoring")
+            print("="*80)
+            
+            time.sleep(interval_seconds)
+            
+    except KeyboardInterrupt:
+        print("\n\n" + "="*80)
+        print("MONITORING STOPPED BY USER")
+        print("="*80)
+        print(f"\nCompleted {iteration} monitoring iteration(s)")
+        print(f"Last status: {'HEALTHY' if failure_count == 0 else f'DEGRADED ({failure_count} failures)'}")
+        print("\nFor full topology details, visit: " + gui_url)
+        print("="*80 + "\n")
+        logger.info(f"Monitoring stopped after {iteration} iterations")
+
+
 if __name__ == "__main__":  # pragma: no cover
     import sys
-    # Support command-line flag to use legacy ReAct agent
-    use_langgraph = "--react" not in sys.argv
-    mode = "LangGraph" if use_langgraph else "ReAct"
-    logger.info(f"Running datacenter agent in {mode} mode")
-    run_demo(use_langgraph=use_langgraph)
+    
+    # Parse command line arguments
+    args = sys.argv[1:]
+    
+    # Check for GUI mode
+    if "--gui" in args or any(arg.startswith("--gui-url=") for arg in args):
+        # Extract GUI URL if provided
+        gui_url = "http://localhost:5000"
+        for arg in args:
+            if arg.startswith("--gui-url="):
+                gui_url = arg.split("=", 1)[1]
+        
+        # Extract user query if provided
+        user_query = None
+        for arg in args:
+            if arg.startswith("--query="):
+                user_query = arg.split("=", 1)[1]
+        
+        # Check for single-run mode (default is continuous)
+        continuous_mode = "--once" not in args
+        
+        # Extract custom interval if provided
+        interval_seconds = GUI_MONITORING_INTERVAL_SECONDS
+        for arg in args:
+            if arg.startswith("--interval="):
+                try:
+                    interval_seconds = int(arg.split("=", 1)[1])
+                except ValueError:
+                    logger.warning(f"Invalid interval value, using default: {GUI_MONITORING_INTERVAL_SECONDS}s")
+        
+        run_gui_demo(
+            gui_url=gui_url, 
+            user_query=user_query,
+            continuous_mode=continuous_mode,
+            interval_seconds=interval_seconds
+        )
+    else:
+        # Legacy mode (Mininet-based)
+        use_langgraph = "--react" not in args
+        mode = "LangGraph" if use_langgraph else "ReAct"
+        logger.info(f"Running datacenter agent in {mode} mode")
+        run_demo(use_langgraph=use_langgraph)
