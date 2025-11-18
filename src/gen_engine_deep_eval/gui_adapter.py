@@ -273,11 +273,27 @@ class GUITopologyAdapter:
                         "connection_id": conn.get("id", "unknown"),
                     }
                 )
+            
+            # Check for flapping connections
+            if conn.get("status") == "flapping":
+                failures.append(
+                    {
+                        "type": "link_flap",
+                        "link": (conn["sourceSwitch"], conn["targetSwitch"]),
+                        "ports": (conn["sourcePort"], conn["targetPort"]),
+                        "detected_from": "connection.status",
+                        "severity": "WARNING",
+                        "connection_id": conn.get("id", "unknown"),
+                        "flapCount": conn.get("flapCount", 0),
+                    }
+                )
 
         # Check for port status issues
         for switch in gui_topology.get("switches", []):
             for port in switch.get("ports", []):
                 status = port.get("status", "CONNECTED")
+                
+                # Physical/layer issues
                 if status in ("PLUGGED_OUT", "CABLE_CUT", "TRAFFIC_DROP"):
                     severity = "CRITICAL" if "CUT" in status else "WARNING"
 
@@ -292,6 +308,54 @@ class GUITopologyAdapter:
                             "detected_from": "port.status",
                         }
                     )
+                
+                # NEW: Port Congestion
+                elif status == "CONGESTED" or status == "HIGH_UTILIZATION":
+                    utilization = port.get("utilization", 0)
+                    failures.append(
+                        {
+                            "type": "port_congestion",
+                            "switch": switch["id"],
+                            "switch_name": switch.get("name", switch["id"]),
+                            "port": port["portNumber"],
+                            "port_id": port.get("id", "unknown"),
+                            "severity": "WARNING",
+                            "detected_from": "port.status",
+                            "utilization": utilization,
+                            "threshold": 90.0,
+                        }
+                    )
+                
+                # NEW: VLAN Mismatch
+                elif status == "VLAN_MISMATCH":
+                    failures.append(
+                        {
+                            "type": "vlan_mismatch",
+                            "switch": switch["id"],
+                            "switch_name": switch.get("name", switch["id"]),
+                            "port": port["portNumber"],
+                            "port_id": port.get("id", "unknown"),
+                            "severity": "ERROR",
+                            "detected_from": "port.status",
+                            "currentVlan": port.get("vlan", "unknown"),
+                            "expectedVlan": port.get("expectedVlan", "unknown"),
+                        }
+                    )
+                
+                # NEW: Link Flapping (port-level)
+                elif status == "LINK_FLAP":
+                    failures.append(
+                        {
+                            "type": "link_flap",
+                            "switch": switch["id"],
+                            "switch_name": switch.get("name", switch["id"]),
+                            "port": port["portNumber"],
+                            "port_id": port.get("id", "unknown"),
+                            "severity": "WARNING",
+                            "detected_from": "port.status",
+                            "flapCount": port.get("flapCount", 0),
+                        }
+                    )
 
         # Check for SFP mismatches
         for switch in gui_topology.get("switches", []):
@@ -303,6 +367,7 @@ class GUITopologyAdapter:
                             "switch": switch["id"],
                             "switch_name": switch.get("name", switch["id"]),
                             "port": port["portNumber"],
+                            "port_id": port.get("id", "unknown"),
                             "current_sfp": port.get("sfpType", "unknown"),
                             "required_sfp": port.get("requiredSfpType", "unknown"),
                             "severity": "ERROR",

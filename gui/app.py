@@ -1454,6 +1454,265 @@ def simulate_traffic_drop():
             'error': str(e)
         }), 500
 
+@app.route('/api/network/simulate/port-congestion', methods=['POST'])
+def simulate_port_congestion():
+    """Simulate port congestion / high utilization"""
+    try:
+        logger.info("Received port-congestion simulation request")
+        
+        try:
+            data = request.get_json() or {}
+            logger.debug(f"Request data: {data}")
+        except Exception as json_error:
+            logger.error(f"JSON parsing error: {str(json_error)}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body',
+                'error': str(json_error)
+            }), 400
+        
+        switch_id = data.get('switchId')
+        port_number = data.get('portNumber')
+        utilization = data.get('utilization', 95.0)  # Default 95%
+        
+        target_switch, target_port = find_port(switch_id, port_number)
+        
+        # Set high utilization
+        target_port['utilization'] = utilization
+        target_port['status'] = 'CONGESTED' if utilization > 90 else 'HIGH_UTILIZATION'
+        target_port['lastUpdated'] = datetime.now().isoformat()
+        
+        # Store congestion start time for tracking
+        target_port['congestionStartTime'] = datetime.now().isoformat()
+        
+        issue = add_issue(
+            'PORT_CONGESTION',
+            f'Port {target_port["portNumber"]} on {target_switch["name"]} at {utilization}% utilization (threshold: 90%)',
+            target_port['id']
+        )
+        
+        update_network_stats()
+        
+        response_data = {
+            'success': True,
+            'message': 'Port congestion simulation executed',
+            'data': {
+                'affectedSwitch': target_switch['name'],
+                'affectedPort': target_port['portNumber'],
+                'portId': target_port['id'],
+                'utilization': utilization,
+                'threshold': 90.0,
+                'issue': issue,
+                'networkStats': {
+                    'activePorts': network_state['activePorts'],
+                    'faultyPorts': network_state['faultyPorts']
+                }
+            }
+        }
+        
+        logger.info(f"Port-congestion simulation completed: {utilization}% utilization")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in port-congestion simulation: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error during port-congestion simulation',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/network/simulate/vlan-mismatch', methods=['POST'])
+def simulate_vlan_mismatch():
+    """Simulate VLAN misconfiguration"""
+    try:
+        logger.info("Received VLAN-mismatch simulation request")
+        
+        try:
+            data = request.get_json() or {}
+            logger.debug(f"Request data: {data}")
+        except Exception as json_error:
+            logger.error(f"JSON parsing error: {str(json_error)}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body',
+                'error': str(json_error)
+            }), 400
+        
+        switch_id = data.get('switchId')
+        port_number = data.get('portNumber')
+        current_vlan = data.get('currentVlan', 100)
+        expected_vlan = data.get('expectedVlan', 200)
+        
+        target_switch, target_port = find_port(switch_id, port_number)
+        
+        # Set VLAN mismatch
+        target_port['vlan'] = current_vlan
+        target_port['expectedVlan'] = expected_vlan
+        target_port['status'] = 'VLAN_MISMATCH'
+        target_port['lastUpdated'] = datetime.now().isoformat()
+        
+        issue = add_issue(
+            'VLAN_MISMATCH',
+            f'Port {target_port["portNumber"]} on {target_switch["name"]}: configured VLAN {current_vlan} (expected {expected_vlan})',
+            target_port['id']
+        )
+        
+        update_network_stats()
+        
+        response_data = {
+            'success': True,
+            'message': 'VLAN mismatch simulation executed',
+            'data': {
+                'affectedSwitch': target_switch['name'],
+                'affectedPort': target_port['portNumber'],
+                'portId': target_port['id'],
+                'currentVlan': current_vlan,
+                'expectedVlan': expected_vlan,
+                'issue': issue,
+                'networkStats': {
+                    'activePorts': network_state['activePorts'],
+                    'faultyPorts': network_state['faultyPorts']
+                }
+            }
+        }
+        
+        logger.info(f"VLAN-mismatch simulation completed: VLAN {current_vlan} vs expected {expected_vlan}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in VLAN-mismatch simulation: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error during VLAN-mismatch simulation',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/network/simulate/link-flap', methods=['POST'])
+def simulate_link_flap():
+    """Simulate link flapping"""
+    try:
+        logger.info("Received link-flap simulation request")
+        
+        try:
+            data = request.get_json() or {}
+            logger.debug(f"Request data: {data}")
+        except Exception as json_error:
+            logger.error(f"JSON parsing error: {str(json_error)}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body',
+                'error': str(json_error)
+            }), 400
+        
+        connection_id = data.get('connectionId')
+        flap_count = data.get('flapCount', 10)
+        
+        # Find the connection
+        target_connection = None
+        for connection in network_state['topology'].get('connections', []):
+            if connection['id'] == connection_id:
+                target_connection = connection
+                break
+        
+        if not target_connection:
+            # Select random active connection
+            active_connections = [conn for conn in network_state['topology'].get('connections', [])
+                                if conn.get('status', 'active') == 'active']
+            if not active_connections:
+                return jsonify({
+                    'success': False,
+                    'message': 'No active connections available',
+                    'error': 'No connections found'
+                }), 400
+            
+            import random
+            target_connection = random.choice(active_connections)
+            logger.info(f"No connectionId provided, randomly selected: {target_connection['id']}")
+        
+        # Mark connection as flapping
+        target_connection['flapCount'] = flap_count
+        target_connection['flapStartTime'] = datetime.now().isoformat()
+        target_connection['status'] = 'flapping'
+        
+        # Mark both ports as link flap
+        source_switch_id = target_connection['sourceSwitch']
+        source_port_number = target_connection['sourcePort']
+        target_switch_id = target_connection['targetSwitch']
+        target_port_number = target_connection['targetPort']
+        
+        affected_ports = []
+        
+        # Update source port
+        for switch in network_state['topology']['switches']:
+            if switch['id'] == source_switch_id:
+                for port in switch['ports']:
+                    if port['portNumber'] == source_port_number:
+                        port['status'] = 'LINK_FLAP'
+                        port['flapCount'] = flap_count
+                        port['lastUpdated'] = datetime.now().isoformat()
+                        affected_ports.append({'switch': switch['name'], 'port': port})
+                        break
+                break
+        
+        # Update target port
+        for switch in network_state['topology']['switches']:
+            if switch['id'] == target_switch_id:
+                for port in switch['ports']:
+                    if port['portNumber'] == target_port_number:
+                        port['status'] = 'LINK_FLAP'
+                        port['flapCount'] = flap_count
+                        port['lastUpdated'] = datetime.now().isoformat()
+                        affected_ports.append({'switch': switch['name'], 'port': port})
+                        break
+                break
+        
+        issue = add_issue(
+            'LINK_FLAP',
+            f'Link flapping detected on connection {target_connection["id"]}: {flap_count} state changes in 60 seconds',
+            target_connection['id']
+        )
+        
+        update_network_stats()
+        
+        response_data = {
+            'success': True,
+            'message': 'Link flap simulation executed',
+            'data': {
+                'flapConnection': {
+                    'id': target_connection['id'],
+                    'sourceSwitch': source_switch_id,
+                    'sourcePort': source_port_number,
+                    'targetSwitch': target_switch_id,
+                    'targetPort': target_port_number
+                },
+                'flapCount': flap_count,
+                'affectedPorts': [{
+                    'switch': ap['switch'],
+                    'portNumber': ap['port']['portNumber'],
+                    'portId': ap['port']['id']
+                } for ap in affected_ports],
+                'issue': issue,
+                'networkStats': {
+                    'activePorts': network_state['activePorts'],
+                    'faultyPorts': network_state['faultyPorts']
+                }
+            }
+        }
+        
+        logger.info(f"Link-flap simulation completed: {flap_count} flaps on {target_connection['id']}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in link-flap simulation: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error during link-flap simulation',
+            'error': str(e)
+        }), 500
+
 @app.route('/api/network/simulate/sfp-mismatch', methods=['POST'])
 def simulate_sfp_mismatch():
     """Simulate SFP type mismatch"""
@@ -1949,6 +2208,316 @@ def internal_error(error):
         'message': 'Something went wrong!',
         'error': str(error)
     }), 500
+
+# =============================================================================
+# REMEDIATION / FIX EXECUTION ENDPOINTS
+# =============================================================================
+
+@app.route('/api/network/redistribute-traffic', methods=['POST'])
+def redistribute_traffic():
+    """Redistribute traffic across parallel paths to resolve congestion"""
+    try:
+        logger.info("Received traffic redistribution request")
+        
+        try:
+            data = request.get_json() or {}
+            logger.debug(f"Request data: {data}")
+        except Exception as json_error:
+            logger.error(f"JSON parsing error: {str(json_error)}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body',
+                'error': str(json_error)
+            }), 400
+        
+        congested_link = data.get('congestedLink', {})
+        alternate_paths = data.get('alternatePaths', [])
+        flow_distribution = data.get('flowDistribution', {})
+        
+        src_switch_id = congested_link.get('src')
+        dst_switch_id = congested_link.get('dst')
+        
+        if not src_switch_id or not dst_switch_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing required fields: congestedLink.src and congestedLink.dst',
+                'error': 'Invalid request parameters'
+            }), 400
+        
+        # Find the congested connection
+        congested_connection = None
+        for connection in network_state['topology'].get('connections', []):
+            if ((connection['sourceSwitch'] == src_switch_id and connection['targetSwitch'] == dst_switch_id) or
+                (connection['sourceSwitch'] == dst_switch_id and connection['targetSwitch'] == src_switch_id)):
+                congested_connection = connection
+                break
+        
+        if not congested_connection:
+            return jsonify({
+                'success': False,
+                'message': f'Connection not found between {src_switch_id} and {dst_switch_id}',
+                'error': 'Connection not found'
+            }), 404
+        
+        # Reduce utilization on congested link
+        primary_percentage = flow_distribution.get('primary', 50)
+        
+        # Find and update congested port
+        for switch in network_state['topology']['switches']:
+            if switch['id'] == src_switch_id:
+                for port in switch['ports']:
+                    if port['portNumber'] == congested_connection['sourcePort']:
+                        old_utilization = port.get('utilization', 95.0)
+                        new_utilization = old_utilization * (primary_percentage / 100.0)
+                        port['utilization'] = new_utilization
+                        port['status'] = 'CONNECTED'  # No longer congested
+                        port['lastUpdated'] = datetime.now().isoformat()
+                        logger.info(f"Reduced utilization on {switch['name']} port {port['portNumber']}: {old_utilization}% → {new_utilization}%")
+                        break
+                break
+        
+        # Mark any issues as resolved
+        for issue in network_state['issues']:
+            if issue['type'] == 'PORT_CONGESTION' and not issue.get('resolved', False):
+                # Check if this issue is related to the fixed port
+                if (issue.get('affectedPort') and 
+                    (src_switch_id in str(issue.get('description', '')) or
+                     dst_switch_id in str(issue.get('description', '')))):
+                    issue['resolved'] = True
+                    issue['resolvedTime'] = datetime.now().isoformat()
+                    issue['resolutionMethod'] = 'Traffic redistribution by AI agent'
+                    logger.info(f"Marked issue {issue['id']} as resolved")
+        
+        update_network_stats()
+        
+        response_data = {
+            'success': True,
+            'message': 'Traffic redistributed successfully',
+            'data': {
+                'congestedLink': {
+                    'src': src_switch_id,
+                    'dst': dst_switch_id,
+                    'connectionId': congested_connection['id']
+                },
+                'alternatePaths': alternate_paths,
+                'flowDistribution': flow_distribution,
+                'result': {
+                    'oldUtilization': 95.0,
+                    'newUtilization': round(95.0 * (primary_percentage / 100.0), 1),
+                    'status': 'Traffic load balanced'
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+        }
+        
+        logger.info(f"Traffic redistribution completed for {src_switch_id} → {dst_switch_id}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in traffic redistribution: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error during traffic redistribution',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/network/port/<port_id>/vlan', methods=['POST'])
+def reconfigure_port_vlan(port_id):
+    """Reconfigure VLAN on a specific port"""
+    try:
+        logger.info(f"Received VLAN reconfiguration request for port {port_id}")
+        
+        try:
+            data = request.get_json() or {}
+            logger.debug(f"Request data: {data}")
+        except Exception as json_error:
+            logger.error(f"JSON parsing error: {str(json_error)}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body',
+                'error': str(json_error)
+            }), 400
+        
+        target_vlan = data.get('vlan')
+        
+        if not target_vlan:
+            return jsonify({
+                'success': False,
+                'message': 'Missing required field: vlan',
+                'error': 'Invalid request parameters'
+            }), 400
+        
+        # Find the port
+        target_port = None
+        target_switch = None
+        for switch in network_state['topology']['switches']:
+            for port in switch['ports']:
+                if port['id'] == port_id:
+                    target_port = port
+                    target_switch = switch
+                    break
+            if target_port:
+                break
+        
+        if not target_port:
+            return jsonify({
+                'success': False,
+                'message': f'Port {port_id} not found',
+                'error': 'Port not found'
+            }), 404
+        
+        # Update VLAN
+        old_vlan = target_port.get('vlan', 'unknown')
+        target_port['vlan'] = target_vlan
+        target_port['status'] = 'CONNECTED'  # No longer mismatch
+        target_port['lastUpdated'] = datetime.now().isoformat()
+        
+        # Remove expectedVlan field
+        if 'expectedVlan' in target_port:
+            del target_port['expectedVlan']
+        
+        # Mark issues as resolved
+        for issue in network_state['issues']:
+            if issue['type'] == 'VLAN_MISMATCH' and not issue.get('resolved', False):
+                if issue.get('affectedPort') == port_id:
+                    issue['resolved'] = True
+                    issue['resolvedTime'] = datetime.now().isoformat()
+                    issue['resolutionMethod'] = 'VLAN reconfiguration by AI agent'
+                    logger.info(f"Marked issue {issue['id']} as resolved")
+        
+        update_network_stats()
+        
+        response_data = {
+            'success': True,
+            'message': 'VLAN reconfigured successfully',
+            'data': {
+                'portId': port_id,
+                'switch': target_switch['name'],
+                'portNumber': target_port['portNumber'],
+                'oldVlan': old_vlan,
+                'newVlan': target_vlan,
+                'timestamp': datetime.now().isoformat()
+            }
+        }
+        
+        logger.info(f"VLAN reconfigured on port {port_id}: {old_vlan} → {target_vlan}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in VLAN reconfiguration: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error during VLAN reconfiguration',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/network/stabilize-link', methods=['POST'])
+def stabilize_flapping_link():
+    """Stabilize flapping link by switching to alternate path"""
+    try:
+        logger.info("Received link stabilization request")
+        
+        try:
+            data = request.get_json() or {}
+            logger.debug(f"Request data: {data}")
+        except Exception as json_error:
+            logger.error(f"JSON parsing error: {str(json_error)}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body',
+                'error': str(json_error)
+            }), 400
+        
+        connection_id = data.get('connectionId')
+        alternate_path = data.get('alternatePath', {})
+        
+        if not connection_id:
+            return jsonify({
+                'success': False,
+                'message': 'Missing required field: connectionId',
+                'error': 'Invalid request parameters'
+            }), 400
+        
+        # Find the flapping connection
+        flapping_connection = None
+        for connection in network_state['topology'].get('connections', []):
+            if connection['id'] == connection_id:
+                flapping_connection = connection
+                break
+        
+        if not flapping_connection:
+            return jsonify({
+                'success': False,
+                'message': f'Connection {connection_id} not found',
+                'error': 'Connection not found'
+            }), 404
+        
+        # Mark flapping link for maintenance
+        flapping_connection['status'] = 'maintenance'
+        flapping_connection['maintenanceReason'] = 'Link flapping - switched to alternate path'
+        flapping_connection['maintenanceStartTime'] = datetime.now().isoformat()
+        
+        # Update ports
+        for switch in network_state['topology']['switches']:
+            if switch['id'] == flapping_connection['sourceSwitch']:
+                for port in switch['ports']:
+                    if port['portNumber'] == flapping_connection['sourcePort']:
+                        port['status'] = 'MAINTENANCE'
+                        port['lastUpdated'] = datetime.now().isoformat()
+                        if 'flapCount' in port:
+                            del port['flapCount']
+                        break
+                break
+        
+        for switch in network_state['topology']['switches']:
+            if switch['id'] == flapping_connection['targetSwitch']:
+                for port in switch['ports']:
+                    if port['portNumber'] == flapping_connection['targetPort']:
+                        port['status'] = 'MAINTENANCE'
+                        port['lastUpdated'] = datetime.now().isoformat()
+                        if 'flapCount' in port:
+                            del port['flapCount']
+                        break
+                break
+        
+        # Mark issues as resolved
+        for issue in network_state['issues']:
+            if issue['type'] == 'LINK_FLAP' and not issue.get('resolved', False):
+                if connection_id in str(issue.get('description', '')):
+                    issue['resolved'] = True
+                    issue['resolvedTime'] = datetime.now().isoformat()
+                    issue['resolutionMethod'] = 'Link stabilization by AI agent - traffic moved to alternate path'
+                    logger.info(f"Marked issue {issue['id']} as resolved")
+        
+        update_network_stats()
+        
+        response_data = {
+            'success': True,
+            'message': 'Link stabilized successfully',
+            'data': {
+                'flappingConnection': {
+                    'id': connection_id,
+                    'status': 'maintenance'
+                },
+                'alternatePath': alternate_path,
+                'action': 'Traffic moved to stable alternate path',
+                'timestamp': datetime.now().isoformat()
+            }
+        }
+        
+        logger.info(f"Link stabilized: {connection_id} placed in maintenance, traffic moved to alternate path")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in link stabilization: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error during link stabilization',
+            'error': str(e)
+        }), 500
 
 # Initialize network on startup
 initialize_network()

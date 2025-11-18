@@ -111,25 +111,55 @@
         <!-- Control Panel -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
             <h2 class="text-xl font-bold text-gray-800 mb-4">🎮 Simulation Controls</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <button onclick="simulateIssue('cable-plugout')" class="px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition-colors">
+            <p class="text-sm text-gray-600 mb-4">
+                <span class="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-semibold mr-2">🤖 AUTO-FIXABLE</span>
+                = AI agent can fix automatically |
+                <span class="inline-block px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-semibold ml-2 mr-2">👤 MANUAL</span>
+                = Requires human intervention
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Manual Issues -->
+                <button onclick="simulateIssue('cable-plugout')" class="relative px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-orange-600 text-white rounded text-xs font-bold">MANUAL</span>
                     🔌 Cable Plug-out
                 </button>
-                <button onclick="simulateIssue('cable-cut')" class="px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition-colors">
+                <button onclick="simulateIssue('cable-cut')" class="relative px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-orange-600 text-white rounded text-xs font-bold">MANUAL</span>
                     ✂️ Cable Cut
                 </button>
-                <button onclick="simulateIssue('traffic-drop')" class="px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition-colors">
+                <button onclick="simulateIssue('traffic-drop')" class="relative px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-orange-600 text-white rounded text-xs font-bold">MANUAL</span>
                     📉 Traffic Drop
                 </button>
-                <button onclick="simulateIssue('sfp-mismatch')" class="px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600 transition-colors">
+                <button onclick="simulateIssue('sfp-mismatch')" class="relative px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-orange-600 text-white rounded text-xs font-bold">MANUAL</span>
                     🔧 SFP Mismatch
                 </button>
+                <!-- AUTO-FIXABLE ISSUES (NEW) -->
+                <button onclick="simulateIssue('port-congestion')" class="relative px-6 py-3 bg-pink-500 text-white font-semibold rounded-lg shadow-md hover:bg-pink-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-green-600 text-white rounded text-xs font-bold">AUTO</span>
+                    🚦 Port Congestion
+                </button>
+                <button onclick="simulateIssue('vlan-mismatch')" class="relative px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-green-600 text-white rounded text-xs font-bold">AUTO</span>
+                    🏷️ VLAN Mismatch
+                </button>
+                <button onclick="simulateIssue('link-flap')" class="relative px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600 transition-colors">
+                    <span class="absolute top-1 right-1 px-1.5 py-0.5 bg-green-600 text-white rounded text-xs font-bold">AUTO</span>
+                    ⚡ Link Flapping
+                </button>
+                <!-- Control Buttons -->
                 <button onclick="resetNetwork()" class="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition-colors">
                     🔄 Reset Network
                 </button>
+            </div>
+            <div class="mt-4 flex gap-4 items-center flex-wrap">
                 <button onclick="showAPIDoc()" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition-colors">
                     📚 API Docs
                 </button>
+                <div class="text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg">
+                    💡 <span class="font-semibold">Tip:</span> Auto-fixable issues can be resolved by the AI agent with your approval. Manual issues require physical intervention.
+                </div>
             </div>
         </div>
 

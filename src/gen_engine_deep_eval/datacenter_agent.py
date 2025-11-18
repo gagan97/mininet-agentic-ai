@@ -1203,7 +1203,7 @@ def run_gui_demo(
     )
     
     # Build GUI workflow
-    graph = build_gui_datacenter_graph(llm)
+    graph = build_gui_datacenter_graph(llm, interactive_mode=continuous_mode)
     
     # State tracking for continuous monitoring
     previous_failure_count = None
@@ -1214,6 +1214,7 @@ def run_gui_demo(
     print("DATACENTER AGENT - GUI MONITORING MODE")
     print("="*80)
     print(f"Mode: {'CONTINUOUS' if continuous_mode else 'SINGLE RUN'}")
+    print(f"Interactive Fixes: {'ENABLED' if continuous_mode else 'DISABLED'}")
     if continuous_mode:
         print(f"Monitoring Interval: {interval_seconds} seconds ({interval_seconds//60} minutes)")
         print("Press Ctrl+C to stop monitoring")
@@ -1292,6 +1293,37 @@ def run_gui_demo(
             else:
                 print(f"⚠️  Network Status: DEGRADED ({failure_count} failures detected)")
                 print("\n" + result.get("runbook", "No runbook generated"))
+                
+                # Check for auto-fixable actions and prompt user
+                if continuous_mode and result.get("fix_proposal"):
+                    print(result["fix_proposal"])
+                    
+                    # Get user input
+                    try:
+                        user_input = input("\nYour choice: ").strip().lower()
+                        
+                        if user_input in ("yes", "y"):
+                            print("\n🔧 Applying automated fixes...")
+                            
+                            # Update state with approval and re-run graph to execute fixes
+                            initial_state["user_approved_fixes"] = True
+                            initial_state["auto_fixable_actions"] = result.get("auto_fixable_actions", [])
+                            initial_state["manual_actions"] = result.get("manual_actions", [])
+                            initial_state["status"] = "executing_fixes"
+                            
+                            # Re-invoke graph to execute fixes
+                            fix_result = graph.invoke(initial_state)
+                            
+                            # Display fix results
+                            if fix_result.get("fix_results"):
+                                print(fix_result["fix_results"])
+                            
+                        else:
+                            print("\n⏭️  Automated fixes skipped by user.")
+                            print("   Manual intervention required for remediation.")
+                    
+                    except (KeyboardInterrupt, EOFError):
+                        print("\n\n⏭️  User input cancelled - skipping automated fixes.")
             
             # Update tracking variables
             previous_failure_count = failure_count
