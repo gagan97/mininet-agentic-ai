@@ -1167,16 +1167,21 @@ def run_gui_demo(
 ):
     """Run datacenter agent in GUI mode - fetch topology from GUI API.
     
+    Now includes interactive conversational capabilities by default.
+    
     Args:
         gui_url: Base URL of GUI simulation tool
         user_query: Optional user query to guide analysis
         continuous_mode: If True, run in continuous monitoring loop
         interval_seconds: Seconds to wait between monitoring iterations
     """
-    from .graphs.gui_datacenter_graph import build_gui_datacenter_graph, GUIDatacenterState
+    from .graphs.interactive_datacenter_graph import (
+        build_interactive_datacenter_graph,
+        InteractiveDatacenterState
+    )
     from datetime import datetime
     
-    logger.info(f"Running datacenter agent in GUI mode, connecting to {gui_url}")
+    logger.info(f"Running datacenter agent in GUI mode with interactive conversation, connecting to {gui_url}")
     
     # Get API credentials from environment
     api_base = os.getenv("REST_API_BASE") or os.getenv("GEN_ENGINE_API_BASE")
@@ -1193,17 +1198,17 @@ def run_gui_demo(
         print("  export GEN_ENGINE_API_KEY='...'")
         return
     
-    # Initialize LLM
+    # Initialize LLM with slightly higher temperature for natural conversation
     llm = GenerativeEngineLLM(
         api_base=api_base,
         api_key=api_key,
         model="anthropic.claude-3-5-sonnet-20240620-v1:0",
         max_tokens=4096,
-        temperature=0.05,
+        temperature=0.1,  # Slightly higher for natural conversation
     )
     
-    # Build GUI workflow
-    graph = build_gui_datacenter_graph(llm, interactive_mode=continuous_mode)
+    # Build interactive GUI workflow
+    graph = build_interactive_datacenter_graph(llm, enable_continuous_chat=continuous_mode)
     
     # State tracking for continuous monitoring
     previous_failure_count = None
@@ -1211,14 +1216,18 @@ def run_gui_demo(
     iteration = 0
     
     print("\n" + "="*80)
-    print("DATACENTER AGENT - GUI MONITORING MODE")
+    print("🤖 INTERACTIVE DATACENTER AGENT - GUI MONITORING MODE")
     print("="*80)
-    print(f"Mode: {'CONTINUOUS' if continuous_mode else 'SINGLE RUN'}")
-    print(f"Interactive Fixes: {'ENABLED' if continuous_mode else 'DISABLED'}")
+    print(f"Mode: {'CONTINUOUS MONITORING' if continuous_mode else 'SINGLE RUN'}")
     if continuous_mode:
         print(f"Monitoring Interval: {interval_seconds} seconds ({interval_seconds//60} minutes)")
         print("Press Ctrl+C to stop monitoring")
     print(f"GUI URL: {gui_url}")
+    print("\n💬 Interactive conversation enabled - You can:")
+    print("   • Ask questions about failures")
+    print("   • Request explanations for fixes")
+    print("   • Explore alternatives")
+    print("   • Type 'help' for commands")
     print("="*80 + "\n")
     
     try:
@@ -1226,24 +1235,29 @@ def run_gui_demo(
             iteration += 1
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # Initialize state
-            initial_state: GUIDatacenterState = {
+            # Initialize state for this iteration
+            initial_state: InteractiveDatacenterState = {
                 "gui_url": gui_url,
                 "user_query": user_query or "Analyze network topology and identify any failures requiring remediation.",
                 "status": "idle",
+                "conversation_history": [],
+                "awaiting_user_input": False,
+                "conversation_phase": "initial_analysis",
             }
             
-            # Run workflow
+            # Run initial analysis
             logger.info(f"Starting monitoring iteration {iteration} at {timestamp}")
-            result = graph.invoke(initial_state)
             
-            # Display results
             print("\n" + "="*80)
             print(f"MONITORING ITERATION #{iteration} - {timestamp}")
             print("="*80 + "\n")
+            print("⏳ Analyzing network...")
             
+            result = graph.invoke(initial_state)
+            
+            # Check for errors
             if result.get("status") == "error":
-                print(f"❌ ERROR: {result.get('error_message', 'Unknown error')}")
+                print(f"\n❌ ERROR: {result.get('error_message', 'Unknown error')}")
                 if not continuous_mode:
                     return
                 print(f"\nRetrying in {interval_seconds} seconds...")
@@ -1263,19 +1277,25 @@ def run_gui_demo(
                 )
                 current_failures.add(failure_sig)
             
-            # Detect changes
+            # Detect changes from previous iteration
             if previous_failure_count is not None:
                 if failure_count > previous_failure_count:
-                    print("🚨 ALERT: New failures detected!")
+                    print("\n🚨 ALERT: New failures detected!")
                 elif failure_count < previous_failure_count:
-                    print("✅ IMPROVEMENT: Some failures have been resolved!")
+                    print("\n✅ IMPROVEMENT: Some failures have been resolved!")
                 elif failure_count > 0 and current_failures != previous_failures:
-                    print("🔄 CHANGE: Failure pattern has changed!")
+                    print("\n🔄 CHANGE: Failure pattern has changed!")
             
-            # Display current status
+            # Display agent's initial analysis
+            conversation_history = result.get("conversation_history", [])
+            for msg in conversation_history:
+                if msg["role"] == "assistant":
+                    print(f"\n{msg['content']}\n")
+            
+            # Handle different scenarios
             if failure_count == 0:
-                print("✅ Network Status: HEALTHY")
-                print("\nNo failures detected. Network is operating normally.")
+                print("\n✅ Network Status: HEALTHY")
+                print("No failures detected. Network is operating normally.")
                 
                 # Show topology summary
                 blueprint = result.get("blueprint")
@@ -1286,44 +1306,89 @@ def run_gui_demo(
                     print(f"  - Hosts: {len([n for n in blueprint.nodes if n.node_type == 'host'])}")
                     print(f"  - Links: {len(blueprint.links)}")
                     
-                    # Show active connections
                     link_profiles = result.get("link_profiles", {})
                     active_links = sum(1 for p in link_profiles.values() if p.status == "up")
                     print(f"  - Active Links: {active_links}/{len(link_profiles)}")
+            
             else:
-                print(f"⚠️  Network Status: DEGRADED ({failure_count} failures detected)")
-                print("\n" + result.get("runbook", "No runbook generated"))
+                # Failures detected - start interactive conversation
+                print(f"\n⚠️  Network Status: DEGRADED ({failure_count} failures detected)\n")
                 
-                # Check for auto-fixable actions and prompt user
-                if continuous_mode and result.get("fix_proposal"):
-                    print(result["fix_proposal"])
-                    
+                # Enter conversation loop
+                current_state = result
+                conversation_turn = 0
+                max_turns = 20
+                
+                while conversation_turn < max_turns and current_state.get("awaiting_user_input"):
                     # Get user input
                     try:
-                        user_input = input("\nYour choice: ").strip().lower()
-                        
-                        if user_input in ("yes", "y"):
-                            print("\n🔧 Applying automated fixes...")
-                            
-                            # Update state with approval and re-run graph to execute fixes
-                            initial_state["user_approved_fixes"] = True
-                            initial_state["auto_fixable_actions"] = result.get("auto_fixable_actions", [])
-                            initial_state["manual_actions"] = result.get("manual_actions", [])
-                            initial_state["status"] = "executing_fixes"
-                            
-                            # Re-invoke graph to execute fixes
-                            fix_result = graph.invoke(initial_state)
-                            
-                            # Display fix results
-                            if fix_result.get("fix_results"):
-                                print(fix_result["fix_results"])
-                            
-                        else:
-                            print("\n⏭️  Automated fixes skipped by user.")
-                            print("   Manual intervention required for remediation.")
-                    
+                        user_input = input("You: ").strip()
                     except (KeyboardInterrupt, EOFError):
-                        print("\n\n⏭️  User input cancelled - skipping automated fixes.")
+                        print("\n\n⏭️  Conversation interrupted - skipping to next monitoring cycle")
+                        break
+                    
+                    if not user_input:
+                        continue
+                    
+                    # Check for special commands
+                    if user_input.lower() in ["exit", "quit"]:
+                        print("\n👋 Exiting interactive mode...")
+                        if continuous_mode:
+                            print("Continuing monitoring in non-interactive mode...")
+                        break
+                    
+                    if user_input.lower() == "help":
+                        print("\n📖 AVAILABLE COMMANDS:")
+                        print("  • 'yes' / 'apply'      - Apply suggested fixes")
+                        print("  • 'no' / 'skip'        - Skip fixes")
+                        print("  • 'explain <topic>'    - Get detailed explanation")
+                        print("  • 'alternatives'       - See alternative options")
+                        print("  • 'help'               - Show this help")
+                        print("  • 'exit' / 'skip'      - Skip to next monitoring cycle")
+                        print("\n  Or ask any question in natural language!\n")
+                        continue
+                    
+                    if user_input.lower() in ["skip", "next"]:
+                        print("\n⏭️  Skipping to next monitoring cycle...")
+                        break
+                    
+                    conversation_turn += 1
+                    
+                    # Update state with user input
+                    current_state["user_input"] = user_input
+                    current_state["awaiting_user_input"] = False
+                    
+                    # Process through graph
+                    try:
+                        current_state = graph.invoke(current_state)
+                    except Exception as e:
+                        logger.error(f"Error processing user input: {e}")
+                        print(f"\n❌ Sorry, I encountered an error: {e}")
+                        print("Let's continue...\n")
+                        continue
+                    
+                    # Display agent's response
+                    agent_response = current_state.get("agent_response")
+                    if agent_response:
+                        print(f"\n🤖 Agent: {agent_response}\n")
+                    
+                    # Check if fixes were executed
+                    if current_state.get("user_approved_fixes") and current_state.get("executed_fixes"):
+                        print("\n✅ Fixes have been applied!")
+                        fix_results = current_state.get("fix_results")
+                        if fix_results:
+                            print(fix_results)
+                        break
+                    
+                    # Check if conversation should end
+                    if not current_state.get("awaiting_user_input"):
+                        phase = current_state.get("conversation_phase")
+                        if phase == "complete":
+                            print("\n✅ Conversation complete.")
+                            break
+                
+                if conversation_turn >= max_turns:
+                    print(f"\n⏰ Reached maximum conversation turns ({max_turns})")
             
             # Update tracking variables
             previous_failure_count = failure_count
@@ -1338,7 +1403,7 @@ def run_gui_demo(
             
             # Wait for next iteration
             print("\n" + "="*80)
-            print(f"Next check in {interval_seconds} seconds ({interval_seconds//60} minutes)")
+            print(f"💤 Next check in {interval_seconds} seconds ({interval_seconds//60} minutes)")
             print("Press Ctrl+C to stop monitoring")
             print("="*80)
             
@@ -1361,7 +1426,7 @@ if __name__ == "__main__":  # pragma: no cover
     # Parse command line arguments
     args = sys.argv[1:]
     
-    # Check for GUI mode
+    # Check for GUI mode (now with interactive conversation by default)
     if "--gui" in args or any(arg.startswith("--gui-url=") for arg in args):
         # Extract GUI URL if provided
         gui_url = "http://localhost:5000"

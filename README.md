@@ -78,6 +78,19 @@ This repository demonstrates two complementary workflows built on Capgemini's Ge
   - [GUI_INTEGRATION_ANALYSIS.md](GUI_INTEGRATION_ANALYSIS.md) – Technical design analysis
   - [GUI_IMPLEMENTATION_SUMMARY.md](GUI_IMPLEMENTATION_SUMMARY.md) – Implementation details
 
+### Interactive Conversational Agent (LATEST!)
+- `src/gen_engine_deep_eval/graphs/interactive_datacenter_graph.py` – Enhanced LangGraph agent with natural language conversation capabilities
+- `src/gen_engine_deep_eval/interactive_agent_runner.py` – Command-line interface for interactive sessions
+- **Features**:
+  - Multi-turn natural language conversation
+  - Context-aware explanations and Q&A
+  - Enhanced manual guidance when auto-fixes unavailable
+  - Post-fix verification and follow-up assistance
+  - LLM-powered intent parsing and reasoning
+- **Documentation**:
+  - [INTERACTIVE_AGENT.md](INTERACTIVE_AGENT.md) – Complete user guide with examples
+  - [INTERACTIVE_AGENT_SUMMARY.md](INTERACTIVE_AGENT_SUMMARY.md) – Technical enhancement summary
+
 ### Tests
 - `tests/test_mininet_agent.py` – unit coverage for prompt wiring, credential validation, topology graph filters, and JSON tool contracts.
 - `tests/test_observer_graph.py` – LangGraph Observer agent tests with mocked LLM and telemetry.
@@ -265,9 +278,41 @@ Corporate networks (e.g. XS4OFFICE) may intercept TLS traffic and cause `SSLErro
 
 ## Setup environment and run the application
 
-### GUI Mode (Recommended - No sudo required!)
+### GUI Mode with Interactive Conversation (Recommended!)
 
-The easiest way to get started is using GUI mode, which doesn't require Mininet/Containernet:
+The datacenter agent now includes **interactive conversational capabilities by default** when running in GUI mode:
+
+```bash
+# 1. Start GUI simulation tool
+cd gui && uv run python app.py
+# GUI available at http://localhost:5000
+
+# 2. In another terminal, run agent (interactive conversation enabled by default)
+python -m gen_engine_deep_eval.datacenter_agent --gui
+
+# Run in single-shot mode (no continuous monitoring)
+python -m gen_engine_deep_eval.datacenter_agent --gui --once
+
+# Custom monitoring interval (5 minutes between checks)
+python -m gen_engine_deep_eval.datacenter_agent --gui --interval=300
+```
+
+**Interactive Features (enabled by default):**
+- 🗣️ **Natural language Q&A**: Ask questions about failures, fixes, and network state
+- 🤖 **Intelligent reasoning**: LLM-powered fix classification and risk assessment
+- 🔧 **Conversational approval**: Explore alternatives and get detailed explanations
+- 📊 **Post-fix support**: Verification assistance and follow-up guidance
+- 💬 **Multi-turn dialogue**: Continuous conversation during each monitoring cycle
+- ⏱️ **Continuous monitoring**: Checks network at regular intervals with interactive fixes
+
+**During each monitoring cycle when failures are detected:**
+- Agent analyzes the failure and proposes fixes
+- You can ask questions: "Why did this fail?", "What's the risk?", "Show alternatives"
+- Type 'yes' to apply fixes, 'explain' for details, 'alternatives' for other options
+- Type 'skip' to move to next monitoring cycle
+- Type 'help' to see all available commands
+
+**See [INTERACTIVE_AGENT.md](INTERACTIVE_AGENT.md) for complete documentation and examples.**
 
 ```bash
 # 1. Start GUI simulation tool
