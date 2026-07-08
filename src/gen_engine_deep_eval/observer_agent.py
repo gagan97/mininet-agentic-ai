@@ -35,7 +35,7 @@ from loguru import logger
 from pydantic.v1 import BaseModel
 
 # LangChain (0.3.x) compatibility imports
-from langchain.agents import Tool, AgentType, initialize_agent
+from langchain_classic.agents import Tool, AgentType, initialize_agent
 from langchain_core.callbacks import CallbackManagerForLLMRun
 
 from .wrapper import GenerativeEngineLLM

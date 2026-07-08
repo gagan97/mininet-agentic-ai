@@ -1,15 +1,24 @@
 # Core dependencies
 langchain>=0.3.25
 langchain-core>=0.1.0
+langchain-community>=0.4.0
+langchain-classic>=1.0.0
+langchainhub>=0.1.21
 loguru>=0.7.3
 deepeval>=3.1.5
 requests>=2.32.4
 pydantic>=2.0.0
 networkx>=3.2
 
-# Mininet (system install required, not pip installable)
-# See: https://github.com/mininet/mininet
-# mininet
+# LangGraph dependencies (optional, for graph-based agents)
+# Install with: pip install -r requirements-langgraph.txt
+# Or: pip install langgraph langgraph-checkpoint
+
+# Containernet (system install required, not pip installable)
+# Containernet is an actively maintained fork of Mininet with Docker support
+# See: CONTAINERNET_SETUP.md for detailed installation instructions
+# Repository: https://github.com/containernet/containernet
+# Note: Containernet uses 'mininet' Python namespace for API compatibility
 
 # Testing
 pytest>=7.0.0

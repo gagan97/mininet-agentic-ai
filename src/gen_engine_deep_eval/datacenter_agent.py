@@ -1,9 +1,9 @@
-"""Agentic Mininet integration for LLM-driven data-center remediation.
+"""Agentic Containernet integration for LLM-driven data-center remediation.
 
 This module provides a production-style topology blueprint, import/export
 support, and tool wrappers that allow an LLM-driven ReAct agent to reason
-about outages across a multi-tier (core/aggregation/access) Mininet lab.  The
-agent can:
+about outages across a multi-tier (core/aggregation/access) Containernet lab.
+The agent can:
 
 * inspect detailed topology metadata (roles, models, link media/speeds)
 * monitor synthetic utilisation metrics for each link and port
@@ -13,10 +13,11 @@ agent can:
   failure is cleared
 * persist and reload topology state for reproducible incident drills
 
-The implementation keeps Mininet imports lazy so that unit tests can exercise
-blueprint logic without requiring a Mininet install.  When running the agent for
-real you must install Mininet (typically on Ubuntu/Debian) and execute with root
-privileges.
+The implementation keeps Containernet imports lazy so that unit tests can exercise
+blueprint logic without requiring a Containernet install. When running the agent for
+real you must install Containernet (typically on Ubuntu/Debian) and execute with
+root privileges. Containernet is a fork of Mininet with Docker support and active
+maintenance.
 """
 
 from __future__ import annotations
@@ -31,6 +32,10 @@ from dataclasses import asdict, dataclass, field
 from importlib import import_module
 from pathlib import Path
 
+# Configuration constants for GUI monitoring mode
+GUI_MONITORING_INTERVAL_SECONDS = 180  # 3 minutes between checks
+GUI_MONITORING_ENABLED = True  # Set to False to run once and exit
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
@@ -40,7 +45,7 @@ except ImportError:
     pass
 from typing import Any, Dict, List, Literal, Tuple
 
-from langchain.agents import AgentExecutor, Tool, create_react_agent
+from langchain_classic.agents import AgentExecutor, Tool, create_react_agent
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from loguru import logger
@@ -48,6 +53,7 @@ from pydantic.v1 import BaseModel, Field
 
 import networkx as nx
 from .wrapper import GenerativeEngineLLM
+from .graphs.datacenter_graph import build_datacenter_graph, run_datacenter_graph
 
 NodeRole = Literal["core", "aggregation", "access", "host"]
 LinkType = Literal[
@@ -259,14 +265,23 @@ def build_datacenter_blueprint() -> TopologyBlueprint:
 
 
 def _ensure_mininet_imports():
+    """Import Containernet modules (API-compatible with Mininet).
+    
+    Containernet is an actively maintained fork of Mininet with Docker support.
+    It maintains full API compatibility with Mininet, so existing code works
+    without modification.
+    """
     try:
+        # Try Containernet first (preferred, actively maintained)
         net_mod = import_module("mininet.net")
         topo_mod = import_module("mininet.topo")
         link_mod = import_module("mininet.link")
         node_mod = import_module("mininet.node")
     except ImportError as exc:  # pragma: no cover - runtime requirement
         raise RuntimeError(
-            "Mininet is required for this agent. Install it from https://github.com/mininet/mininet"
+            "Containernet is required for this agent. Install it from https://github.com/containernet/containernet\n"
+            "Containernet is an actively maintained fork of Mininet with Docker support.\n"
+            "Installation: See CONTAINERNET_SETUP.md for detailed instructions."
         ) from exc
 
     return (
@@ -308,9 +323,14 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
         if self.net is not None:
             return
         if os.geteuid() != 0:  # pragma: no cover
-            raise PermissionError("Mininet must run as root. Re-run with sudo.")
+            raise PermissionError("Containernet must run as root. Re-run with sudo.")
+        
+        # Clean up any leftover Mininet state from previous runs
+        import subprocess
+        subprocess.run(["mn", "-c"], check=False, capture_output=True)
+        
         topo_cls = self._build_topology_class()
-        logger.info("Starting Mininet with blueprint '%s'", self.blueprint.name)
+        logger.info("Starting Containernet with blueprint '%s'", self.blueprint.name)
         self.net = self._mininet_cls(
             topo=topo_cls(),
             controller=self._controller,
@@ -354,6 +374,7 @@ class DataCenterEnvironment(AbstractContextManager["DataCenterEnvironment"]):
                         bw=link.port_speed_gbps,
                         delay=f"{link.delay_ms}ms",
                         loss=link.loss_percent,
+                        max_queue_size=1000,
                     )
 
         return BlueprintTopo
@@ -1074,6 +1095,7 @@ def load_mininet_llm(config: MininetAgentConfig | None = None) -> GenerativeEngi
 class MininetAgentScenario:
     env: DataCenterEnvironment
     llm: BaseLanguageModel
+    use_langgraph: bool = True
     investigation_prompt: str = (
         "Analyze the entire network topology for connectivity issues between any nodes, hosts, or switches. "
         "Identify all failed or degraded links. For each failure, use compute_resilient_path to find an "
@@ -1083,12 +1105,28 @@ class MininetAgentScenario:
     )
 
     def run(self) -> Dict[str, Any]:
-        agent = build_mininet_agent(self.llm, self.env)
-        logger.info("Executing Mininet remediation scenario")
-        return agent.invoke({"input": self.investigation_prompt})
+        if self.use_langgraph:
+            logger.info("Executing Mininet remediation with LangGraph")
+            graph = build_datacenter_graph(self.llm, self.env, max_iterations=10)
+            result = run_datacenter_graph(graph, self.investigation_prompt)
+            # Convert LangGraph result to match legacy format for compatibility
+            return {
+                "output": result.get("final_answer", "No summary available"),
+                "intermediate_steps": result.get("remediation_actions", []),
+            }
+        else:
+            logger.info("Executing Mininet remediation with legacy ReAct agent")
+            agent = build_mininet_agent(self.llm, self.env)
+            return agent.invoke({"input": self.investigation_prompt})
 
 
-def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
+def run_demo(blueprint_path: str | None = None, use_langgraph: bool = True) -> None:  # pragma: no cover
+    """Run datacenter agent demonstration.
+    
+    Args:
+        blueprint_path: Optional path to load topology from JSON
+        use_langgraph: If True, use LangGraph state machine (default), else use legacy ReAct agent
+    """
     env = DataCenterEnvironment()
     if blueprint_path:
         logger.info("Loading topology from %s", blueprint_path)
@@ -1099,10 +1137,18 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
         env.simulate_failure(json.dumps({"src": "core1", "dst": "agg1a", "mode": "cable_cut"}))
         
         llm = load_mininet_llm()
-        scenario = MininetAgentScenario(env=env, llm=llm)
+        scenario = MininetAgentScenario(env=env, llm=llm, use_langgraph=use_langgraph)
         outcome = scenario.run()
-        print("\nAgent Outcome\n------------")
-        print(outcome.get("output"))
+        
+        agent_type = "LangGraph" if use_langgraph else "ReAct"
+        if use_langgraph:
+            # For LangGraph, just print the summary (it's already detailed)
+            print(f"\n{outcome.get('output', 'No summary available')}\n")
+        else:
+            # For ReAct, show the old format
+            print(f"\n{agent_type} Agent Outcome\n------------")
+            print(outcome.get("output"))
+        
         export_path = env.save_state("topology_snapshot.json")
         print(f"\nState exported to {export_path}")
     except Exception as e:
@@ -1113,5 +1159,308 @@ def run_demo(blueprint_path: str | None = None) -> None:  # pragma: no cover
         env.stop()
 
 
+def run_gui_demo(
+    gui_url: str = "http://localhost:5000", 
+    user_query: str | None = None,
+    continuous_mode: bool = True,
+    interval_seconds: int = GUI_MONITORING_INTERVAL_SECONDS
+):
+    """Run datacenter agent in GUI mode - fetch topology from GUI API.
+    
+    Now includes interactive conversational capabilities by default.
+    
+    Args:
+        gui_url: Base URL of GUI simulation tool
+        user_query: Optional user query to guide analysis
+        continuous_mode: If True, run in continuous monitoring loop
+        interval_seconds: Seconds to wait between monitoring iterations
+    """
+    from .graphs.interactive_datacenter_graph import (
+        build_interactive_datacenter_graph,
+        InteractiveDatacenterState
+    )
+    from datetime import datetime
+    
+    logger.info(f"Running datacenter agent in GUI mode with interactive conversation, connecting to {gui_url}")
+    
+    # Get API credentials from environment
+    api_base = os.getenv("REST_API_BASE") or os.getenv("GEN_ENGINE_API_BASE")
+    api_key = os.getenv("API_KEY") or os.getenv("GEN_ENGINE_API_KEY")
+    
+    if not api_base or not api_key:
+        logger.error("API credentials not found in environment variables")
+        print("\n❌ ERROR: API credentials required")
+        print("\nPlease set environment variables:")
+        print("  export REST_API_BASE='https://api.generative.engine.capgemini.com/'")
+        print("  export API_KEY='your-api-key'")
+        print("\nOr use alternative names:")
+        print("  export GEN_ENGINE_API_BASE='...'")
+        print("  export GEN_ENGINE_API_KEY='...'")
+        return
+    
+    # Initialize LLM with slightly higher temperature for natural conversation
+    llm = GenerativeEngineLLM(
+        api_base=api_base,
+        api_key=api_key,
+        model="anthropic.claude-3-5-sonnet-20240620-v1:0",
+        max_tokens=4096,
+        temperature=0.1,  # Slightly higher for natural conversation
+    )
+    
+    # Build interactive GUI workflow
+    graph = build_interactive_datacenter_graph(llm, enable_continuous_chat=continuous_mode)
+    
+    # State tracking for continuous monitoring
+    previous_failure_count = None
+    previous_failures = set()
+    iteration = 0
+    
+    print("\n" + "="*80)
+    print("🤖 INTERACTIVE DATACENTER AGENT - GUI MONITORING MODE")
+    print("="*80)
+    print(f"Mode: {'CONTINUOUS MONITORING' if continuous_mode else 'SINGLE RUN'}")
+    if continuous_mode:
+        print(f"Monitoring Interval: {interval_seconds} seconds ({interval_seconds//60} minutes)")
+        print("Press Ctrl+C to stop monitoring")
+    print(f"GUI URL: {gui_url}")
+    print("\n💬 Interactive conversation enabled - You can:")
+    print("   • Ask questions about failures")
+    print("   • Request explanations for fixes")
+    print("   • Explore alternatives")
+    print("   • Type 'help' for commands")
+    print("="*80 + "\n")
+    
+    try:
+        while True:
+            iteration += 1
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Initialize state for this iteration
+            initial_state: InteractiveDatacenterState = {
+                "gui_url": gui_url,
+                "user_query": user_query or "Analyze network topology and identify any failures requiring remediation.",
+                "status": "idle",
+                "conversation_history": [],
+                "awaiting_user_input": False,
+                "conversation_phase": "initial_analysis",
+            }
+            
+            # Run initial analysis
+            logger.info(f"Starting monitoring iteration {iteration} at {timestamp}")
+            
+            print("\n" + "="*80)
+            print(f"MONITORING ITERATION #{iteration} - {timestamp}")
+            print("="*80 + "\n")
+            print("⏳ Analyzing network...")
+            
+            result = graph.invoke(initial_state)
+            
+            # Check for errors
+            if result.get("status") == "error":
+                print(f"\n❌ ERROR: {result.get('error_message', 'Unknown error')}")
+                if not continuous_mode:
+                    return
+                print(f"\nRetrying in {interval_seconds} seconds...")
+                time.sleep(interval_seconds)
+                continue
+            
+            failure_count = result.get("failure_count", 0)
+            failures = result.get("failures", [])
+            
+            # Create failure signature for comparison
+            current_failures = set()
+            for f in failures:
+                failure_sig = (
+                    f.get("type"),
+                    f.get("switch", str(f.get("link", ""))),
+                    f.get("port", "")
+                )
+                current_failures.add(failure_sig)
+            
+            # Detect changes from previous iteration
+            if previous_failure_count is not None:
+                if failure_count > previous_failure_count:
+                    print("\n🚨 ALERT: New failures detected!")
+                elif failure_count < previous_failure_count:
+                    print("\n✅ IMPROVEMENT: Some failures have been resolved!")
+                elif failure_count > 0 and current_failures != previous_failures:
+                    print("\n🔄 CHANGE: Failure pattern has changed!")
+            
+            # Display agent's initial analysis
+            conversation_history = result.get("conversation_history", [])
+            for msg in conversation_history:
+                if msg["role"] == "assistant":
+                    print(f"\n{msg['content']}\n")
+            
+            # Handle different scenarios
+            if failure_count == 0:
+                print("\n✅ Network Status: HEALTHY")
+                print("No failures detected. Network is operating normally.")
+                
+                # Show topology summary
+                blueprint = result.get("blueprint")
+                if blueprint:
+                    print(f"\nTopology Summary:")
+                    print(f"  - Total Nodes: {len(blueprint.nodes)}")
+                    print(f"  - Switches: {len([n for n in blueprint.nodes if n.node_type == 'switch'])}")
+                    print(f"  - Hosts: {len([n for n in blueprint.nodes if n.node_type == 'host'])}")
+                    print(f"  - Links: {len(blueprint.links)}")
+                    
+                    link_profiles = result.get("link_profiles", {})
+                    active_links = sum(1 for p in link_profiles.values() if p.status == "up")
+                    print(f"  - Active Links: {active_links}/{len(link_profiles)}")
+            
+            else:
+                # Failures detected - start interactive conversation
+                print(f"\n⚠️  Network Status: DEGRADED ({failure_count} failures detected)\n")
+                
+                # Enter conversation loop
+                current_state = result
+                conversation_turn = 0
+                max_turns = 20
+                
+                while conversation_turn < max_turns and current_state.get("awaiting_user_input"):
+                    # Get user input
+                    try:
+                        user_input = input("You: ").strip()
+                    except (KeyboardInterrupt, EOFError):
+                        print("\n\n⏭️  Conversation interrupted - skipping to next monitoring cycle")
+                        break
+                    
+                    if not user_input:
+                        continue
+                    
+                    # Check for special commands
+                    if user_input.lower() in ["exit", "quit"]:
+                        print("\n👋 Exiting interactive mode...")
+                        if continuous_mode:
+                            print("Continuing monitoring in non-interactive mode...")
+                        break
+                    
+                    if user_input.lower() == "help":
+                        print("\n📖 AVAILABLE COMMANDS:")
+                        print("  • 'yes' / 'apply'      - Apply suggested fixes")
+                        print("  • 'no' / 'skip'        - Skip fixes")
+                        print("  • 'explain <topic>'    - Get detailed explanation")
+                        print("  • 'alternatives'       - See alternative options")
+                        print("  • 'help'               - Show this help")
+                        print("  • 'exit' / 'skip'      - Skip to next monitoring cycle")
+                        print("\n  Or ask any question in natural language!\n")
+                        continue
+                    
+                    if user_input.lower() in ["skip", "next"]:
+                        print("\n⏭️  Skipping to next monitoring cycle...")
+                        break
+                    
+                    conversation_turn += 1
+                    
+                    # Update state with user input
+                    current_state["user_input"] = user_input
+                    current_state["awaiting_user_input"] = False
+                    
+                    # Process through graph
+                    try:
+                        current_state = graph.invoke(current_state)
+                    except Exception as e:
+                        logger.error(f"Error processing user input: {e}")
+                        print(f"\n❌ Sorry, I encountered an error: {e}")
+                        print("Let's continue...\n")
+                        continue
+                    
+                    # Display agent's response
+                    agent_response = current_state.get("agent_response")
+                    if agent_response:
+                        print(f"\n🤖 Agent: {agent_response}\n")
+                    
+                    # Check if fixes were executed
+                    if current_state.get("user_approved_fixes") and current_state.get("executed_fixes"):
+                        print("\n✅ Fixes have been applied!")
+                        fix_results = current_state.get("fix_results")
+                        if fix_results:
+                            print(fix_results)
+                        break
+                    
+                    # Check if conversation should end
+                    if not current_state.get("awaiting_user_input"):
+                        phase = current_state.get("conversation_phase")
+                        if phase == "complete":
+                            print("\n✅ Conversation complete.")
+                            break
+                
+                if conversation_turn >= max_turns:
+                    print(f"\n⏰ Reached maximum conversation turns ({max_turns})")
+            
+            # Update tracking variables
+            previous_failure_count = failure_count
+            previous_failures = current_failures
+            
+            # Exit if not in continuous mode
+            if not continuous_mode:
+                print("\n" + "="*80)
+                print("Single run complete. Exiting.")
+                print("="*80 + "\n")
+                break
+            
+            # Wait for next iteration
+            print("\n" + "="*80)
+            print(f"💤 Next check in {interval_seconds} seconds ({interval_seconds//60} minutes)")
+            print("Press Ctrl+C to stop monitoring")
+            print("="*80)
+            
+            time.sleep(interval_seconds)
+            
+    except KeyboardInterrupt:
+        print("\n\n" + "="*80)
+        print("MONITORING STOPPED BY USER")
+        print("="*80)
+        print(f"\nCompleted {iteration} monitoring iteration(s)")
+        print(f"Last status: {'HEALTHY' if failure_count == 0 else f'DEGRADED ({failure_count} failures)'}")
+        print("\nFor full topology details, visit: " + gui_url)
+        print("="*80 + "\n")
+        logger.info(f"Monitoring stopped after {iteration} iterations")
+
+
 if __name__ == "__main__":  # pragma: no cover
-    run_demo()
+    import sys
+    
+    # Parse command line arguments
+    args = sys.argv[1:]
+    
+    # Check for GUI mode (now with interactive conversation by default)
+    if "--gui" in args or any(arg.startswith("--gui-url=") for arg in args):
+        # Extract GUI URL if provided
+        gui_url = "http://localhost:5000"
+        for arg in args:
+            if arg.startswith("--gui-url="):
+                gui_url = arg.split("=", 1)[1]
+        
+        # Extract user query if provided
+        user_query = None
+        for arg in args:
+            if arg.startswith("--query="):
+                user_query = arg.split("=", 1)[1]
+        
+        # Check for single-run mode (default is continuous)
+        continuous_mode = "--once" not in args
+        
+        # Extract custom interval if provided
+        interval_seconds = GUI_MONITORING_INTERVAL_SECONDS
+        for arg in args:
+            if arg.startswith("--interval="):
+                try:
+                    interval_seconds = int(arg.split("=", 1)[1])
+                except ValueError:
+                    logger.warning(f"Invalid interval value, using default: {GUI_MONITORING_INTERVAL_SECONDS}s")
+        
+        run_gui_demo(
+            gui_url=gui_url, 
+            user_query=user_query,
+            continuous_mode=continuous_mode,
+            interval_seconds=interval_seconds
+        )
+    else:
+        # Legacy mode (Mininet-based)
+        use_langgraph = "--react" not in args
+        mode = "LangGraph" if use_langgraph else "ReAct"
+        logger.info(f"Running datacenter agent in {mode} mode")
+        run_demo(use_langgraph=use_langgraph)
